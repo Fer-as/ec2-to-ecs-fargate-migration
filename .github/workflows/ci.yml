@@ -1,0 +1,227 @@
+# Application CI: tests, container checks and security gates.
+#
+# Runs on pull requests and pushes to main, manually, and as a reusable gate inside
+# deploy.yml. It never receives AWS credentials (no id-token permission), so pull
+# requests - including from forks - cannot reach AWS.
+#
+# Actions are pinned to full commit SHAs and tool images to digests.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  PYTHON_VERSION: "3.12"
+  PIP_AUDIT_VERSION: "2.10.1"
+  YAMLLINT_VERSION: "1.38.0"
+  TRIVY_IMAGE: aquasec/trivy@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa # 0.75.0
+  ACTIONLINT_IMAGE: rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 # 1.7.12
+  SHELLCHECK_IMAGE: koalaman/shellcheck@sha256:2097951f02e735b613f4a34de20c40f937a6c8f18ecb170612c88c34517221fb # v0.10.0
+  GITLEAKS_IMAGE: zricethezav/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f # v8.30.1
+
+jobs:
+  lint:
+    name: Lint workflows and scripts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: actionlint (GitHub Actions workflows)
+        run: docker run --rm -v "$PWD:/repo" --workdir /repo "$ACTIONLINT_IMAGE" -color
+
+      # A managed Python: Ubuntu 24.04's system Python refuses pip installs (PEP 668)
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: yamllint
+        run: |
+          python -m pip install --quiet "yamllint==${YAMLLINT_VERSION}"
+          yamllint --strict -c .yamllint.yml .github/workflows
+
+      - name: shellcheck
+        run: |
+          # Scripts written for this project: strictest level
+          docker run --rm -v "$PWD:/mnt:ro" "$SHELLCHECK_IMAGE" -S style \
+            /mnt/scripts/setup.sh /mnt/ci/smoke-test.sh
+          # Original legacy helper scripts: errors only (kept unchanged)
+          docker run --rm -v "$PWD:/mnt:ro" "$SHELLCHECK_IMAGE" -S error \
+            /mnt/scripts/test-api.sh /mnt/scripts/validate-setup.sh
+
+  test:
+    name: Tests and dependency audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      dynamodb:
+        image: amazon/dynamodb-local@sha256:ff89bd48ff32cd8d9be5fee8873b65b8854dc408f1afe881be6eb00247bc0dab # 3.3.1
+        ports:
+          - 8000:8000
+    env:
+      DYNAMODB_LOCAL_ENDPOINT: http://localhost:8000
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            app/requirements.txt
+            requirements-dev.txt
+
+      - name: Install pinned dependencies
+        run: python -m pip install --quiet -r requirements-dev.txt
+
+      - name: Wait for DynamoDB Local
+        run: |
+          for _ in $(seq 1 30); do
+            curl -s -o /dev/null "$DYNAMODB_LOCAL_ENDPOINT" && exit 0
+            sleep 1
+          done
+          echo "::error::DynamoDB Local did not start"; exit 1
+
+      - name: pytest (contract, validation, DynamoDB integration, Gunicorn multi-worker)
+        run: |
+          python -m pytest -v -rxXs -p no:cacheprovider 2>&1 | tee "$RUNNER_TEMP/pytest.txt"
+          python -m pytest -v -p no:cacheprovider ci/tests 2>&1 | tee "$RUNNER_TEMP/pytest-ci.txt"
+
+      - name: pip-audit (blocking)
+        run: |
+          python -m pip install --quiet "pip-audit==${PIP_AUDIT_VERSION}"
+          pip-audit --strict --progress-spinner off -r app/requirements.txt -r requirements-dev.txt
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "## Tests"
+            echo '```'
+            grep -E "^(XFAIL|XPASS|FAILED|ERROR)|^=+ .*(passed|failed)" \
+              "$RUNNER_TEMP/pytest.txt" "$RUNNER_TEMP/pytest-ci.txt" 2>/dev/null || echo "no test output"
+            echo '```'
+            echo "Expected failures (XFAIL) document the original in-memory multi-worker defect."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  container:
+    name: Container build, smoke test and Trivy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build production image
+        run: docker build --pull -t legacy-api:ci .
+
+      - name: Run hardened container and wait for Docker health
+        run: |
+          docker run -d --name app -p 127.0.0.1:5000:5000 \
+            --read-only --cap-drop ALL --security-opt no-new-privileges:true legacy-api:ci
+          status=starting
+          for _ in $(seq 1 60); do
+            status=$(docker inspect -f '{{.State.Health.Status}}' app)
+            [ "$status" != starting ] && break
+            sleep 1
+          done
+          echo "Docker health: $status"
+          [ "$status" = healthy ] || { docker logs app; exit 1; }
+
+      - name: Verify non-root runtime user
+        run: |
+          image_user=$(docker inspect -f '{{.Config.User}}' legacy-api:ci)
+          process_uid=$(docker exec app id -u)
+          echo "image user=$image_user process uid=$process_uid"
+          [ "$image_user" = "10001:10001" ] && [ "$process_uid" = "10001" ]
+
+      - name: API smoke tests
+        run: bash ci/smoke-test.sh http://127.0.0.1:5000
+
+      - name: Container logs on failure
+        if: failure()
+        run: docker logs app || true
+
+      - name: Trivy full report (all severities, incl. unfixed)
+        run: |
+          docker save legacy-api:ci -o "$RUNNER_TEMP/image.tar"
+          trivy() { docker run --rm -v "$RUNNER_TEMP:/scan" -v trivy-cache:/root/.cache "$TRIVY_IMAGE" "$@"; }
+          trivy image --quiet --input /scan/image.tar --scanners vuln,secret \
+            --format json --output /scan/trivy-full.json
+          trivy image --quiet --skip-db-update --input /scan/image.tar --scanners vuln,secret \
+            --format table --output /scan/trivy-full.txt
+          python3 ci/trivy_summary.py "$RUNNER_TEMP/trivy-full.json" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Trivy reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: trivy-reports
+          path: |
+            ${{ runner.temp }}/trivy-full.json
+            ${{ runner.temp }}/trivy-full.txt
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Trivy gate - fixable HIGH/CRITICAL vulnerabilities and secrets (blocking)
+        run: |
+          docker run --rm -v "$RUNNER_TEMP:/scan" -v trivy-cache:/root/.cache "$TRIVY_IMAGE" \
+            image --quiet --skip-db-update --input /scan/image.tar --scanners vuln,secret \
+            --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --format table
+
+  secrets:
+    name: Secret scan (git history)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: gitleaks (blocking, findings redacted)
+        run: docker run --rm -v "$PWD:/repo:ro" "$GITLEAKS_IMAGE" git /repo --redact --no-banner --exit-code 1
+
+  ci-gate:
+    name: CI gate
+    if: always()
+    needs: [lint, test, container, secrets]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: All CI jobs must succeed
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'EOF' | tee -a "$GITHUB_STEP_SUMMARY"
+          import json, os, sys
+          needs = json.loads(os.environ["RESULTS"])
+          print("## CI gate")
+          print("")
+          print("| Job | Result |")
+          print("|---|---|")
+          for job, value in needs.items():
+              print(f"| {job} | {value['result']} |")
+          sys.exit(0 if all(v["result"] == "success" for v in needs.values()) else 1)
+          EOF

@@ -11,6 +11,9 @@ Environment="PATH=/opt/flask-app/venv/bin"
 Environment="APP_NAME=legacy-api"
 Environment="APP_VERSION=1.0.0"
 Environment="ENVIRONMENT=production"
+# Optional overrides, e.g. STORAGE_BACKEND=dynamodb, DYNAMODB_TABLE_NAME, AWS_REGION.
+# The leading "-" means the file may be absent (then the in-memory backend is used).
+EnvironmentFile=-/etc/flask-app/flask-app.env
 ExecStart=/opt/flask-app/venv/bin/gunicorn \
     --bind 127.0.0.1:5000 \
     --workers 4 \

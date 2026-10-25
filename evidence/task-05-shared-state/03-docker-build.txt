@@ -1,0 +1,12 @@
+$ docker build --no-cache -t legacy-api:local .
+#15 exporting attestation manifest sha256:f2d8294d024f17e28bc0e5648beae5298ba80ab044d467b422e341a4ff5b34fe 0.0s done
+#15 exporting manifest list sha256:956af8181520d942674446d22f228f96ca65e08aeb4d8039a9e16e2a5d1fa88d 0.0s done
+#15 naming to docker.io/library/legacy-api:local done
+#15 unpacking to docker.io/library/legacy-api:local
+#15 unpacking to docker.io/library/legacy-api:local 1.2s done
+#15 DONE 2.4s
+$ docker build --check .
+Check complete, no warnings found.
+$ docker image ls legacy-api:local
+REPOSITORY:TAG     IMAGE ID       SIZE
+legacy-api:local   956af8181520   242MB

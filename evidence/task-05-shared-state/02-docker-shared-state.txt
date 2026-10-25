@@ -1,0 +1,141 @@
+# Shared state with the production image (legacy-api:local) and DynamoDB Local.
+# <env> = STORAGE_BACKEND=dynamodb DYNAMODB_TABLE_NAME=legacy-api-local DYNAMODB_ENDPOINT_URL=http://dynamodb-local:8000
+#         AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local AWS_REGION=us-east-1   (dummy local credentials, never real AWS)
+
+## 1. Explicit seed (creates the local table), then a second run to prove it is idempotent
+$ docker run --rm --network ddb-test <env> legacy-api:local python seed_dynamodb.py --create-table
+storage - WARNING - Using DynamoDB endpoint override http://dynamodb-local:8000 (local testing only)
+botocore.credentials - INFO - Found credentials in environment variables.
+seed_dynamodb - INFO - Created table legacy-api-local
+seed_dynamodb - INFO - Seed complete. Created: sequence, product 1, product 2, product 3. Already present (left unchanged): none
+exit code: 0
+$ docker run --rm --network ddb-test <env> legacy-api:local python seed_dynamodb.py
+storage - WARNING - Using DynamoDB endpoint override http://dynamodb-local:8000 (local testing only)
+botocore.credentials - INFO - Found credentials in environment variables.
+seed_dynamodb - INFO - Seed complete. Created: none. Already present (left unchanged): sequence, product 1, product 2, product 3
+exit code: 0
+
+## 2. Two app containers, 2 Gunicorn workers each (4 worker processes), hardened, same table
+$ docker run -d --name api-a --network ddb-test -p 127.0.0.1:5001:5000 -e WEB_CONCURRENCY=2 <env> --read-only --cap-drop ALL --security-opt no-new-privileges:true legacy-api:local
+4d525003e501
+$ docker run -d --name api-b ... -p 127.0.0.1:5002:5000 (same options)
+97a743ae82f7
+api-a healthy after 3s
+api-b healthy after 1s
+api-b  Up 3 seconds (healthy)  127.0.0.1:5002->5000/tcp
+api-a  Up 4 seconds (healthy)  127.0.0.1:5001->5000/tcp
+api-a: 3 gunicorn processes (1 master + 2 workers), uid 10001
+api-b: 3 gunicorn processes (1 master + 2 workers), uid 10001
+$ curl http://127.0.0.1:5001/ready ; curl http://127.0.0.1:5002/ready
+{"status":"ready"}
+ HTTP 200
+{"status":"ready"}
+ HTTP 200
+
+## 3. API smoke test against api-a (same 17 checks as Task 4)
+Smoke test against http://127.0.0.1:5001
+PASS  GET /health -> HTTP 200 {"environment":"production","service":"legacy-api","status":"healthy","timestamp":"2026-10-24T15:54:17.816355","version":"1.0.0"}
+PASS  GET /api/v1/products -> HTTP 200 {"count":3,"products":[{"id":1,"name":"Widget A","price":29.99,"stock":100},{"id":2,"name":"Widget B","price":39.99,"stock":50},{"id":3,"name":"Widget C","price":49.99,"stock":75}]}
+PASS  GET /api/v1/products/1 -> HTTP 200 {"id":1,"name":"Widget A","price":29.99,"stock":100}
+PASS  GET /api/v1/products/999 -> HTTP 404 {"error":"Product not found"}
+PASS  GET /api/v1/orders (empty) -> HTTP 200 {"count":0,"orders":[]}
+PASS  POST /api/v1/orders (valid) -> HTTP 201 {"created_at":"2026-10-24T15:54:23.549405","id":1,"product_id":1,"product_name":"Widget A","quantity":2,"total_price":59.98}
+PASS  GET /api/v1/orders (has order) -> HTTP 200 {"count":1,"orders":[{"created_at":"2026-10-24T15:54:23.549405","id":1,"product_id":1,"product_name":"Widget A","quantity":2,"total_price":59.98}]}
+PASS  GET /api/v1/products/1 (stock 98) -> HTTP 200 {"id":1,"name":"Widget A","price":29.99,"stock":98}
+PASS  GET /api/v1/stats -> HTTP 200 {"timestamp":"2026-10-24T15:54:26.939751","total_orders":1,"total_products":3,"total_revenue":59.98}
+PASS  POST quantity -1 -> HTTP 400 {"error":"400 Bad Request: quantity must be a positive integer"}
+PASS  POST quantity 0 -> HTTP 400 {"error":"400 Bad Request: quantity must be a positive integer"}
+PASS  POST quantity "abc" -> HTTP 400 {"error":"400 Bad Request: quantity must be a positive integer"}
+PASS  POST missing product_id -> HTTP 400 {"error":"400 Bad Request: product_id is required"}
+PASS  GET /does-not-exist -> HTTP 404 {"error":"Not found"}
+PASS  GET / -> HTTP 404 {"error":"Not found"}
+PASS  DELETE /api/v1/products/1 -> HTTP 405 {"error":"Method not allowed"}
+PASS  GET /api/v1/stats (invalid orders not counted) -> HTTP 200 {"timestamp":"2026-10-24T15:54:36.058060","total_orders":1,"total_products":3,"total_revenue":59.98}
+Failures: 0
+exit code: 0
+
+## 4. Cross-container consistency
+$ curl -X POST http://127.0.0.1:5002/api/v1/orders -d {"product_id":3,"quantity":2}   (order via api-b)
+{"created_at":"2026-10-24T15:54:37.185249","id":2,"product_id":3,"product_name":"Widget C","quantity":2,"total_price":99.98}
+ HTTP 201
+port 5001: orders=2 [1, 2]  stock=[98, 50, 73]  stats=orders 2 revenue 159.96
+port 5002: orders=2 [1, 2]  stock=[98, 50, 73]  stats=orders 2 revenue 159.96
+
+## 5. Concurrent oversell attempt across both containers
+# product 2 has 50 in stock; 24 parallel orders of 3 units (72 units) alternate between api-a and api-b
+  responses:      16 201
+  responses:       8 400
+port 5001: orders=18 [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]  stock=[98, 2, 73]  stats=orders 18 revenue 2079.48
+port 5002: orders=18 [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]  stock=[98, 2, 73]  stats=orders 18 revenue 2079.48
+# expected: 16 x 201 (48 units), 8 x 400 Insufficient stock, product 2 stock 2, never negative
+
+## 6. Restart: stop and remove api-a, start a new container, data is still there
+8164e4e10a74
+api-a healthy after 3s
+port 5001: orders=18 [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]  stock=[98, 2, 73]  stats=orders 18 revenue 2079.48
+port 5002: orders=18 [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]  stock=[98, 2, 73]  stats=orders 18 revenue 2079.48
+
+## 7. DynamoDB outage: stop DynamoDB Local while both apps run
+$ docker stop dynamodb-local
+stopped
+$ curl /ready
+{"status":"not ready"}
+ HTTP 503  (answered in 8302 ms)
+$ curl /health
+HTTP 200
+$ curl /api/v1/products
+{"error":"Internal server error"}
+ HTTP 500
+$ curl -X POST /api/v1/orders
+{"error":"Internal server error"}
+ HTTP 500
+
+# Server-side log for the failed readiness check (stderr of api-a). No credentials or table details are returned to clients:
+2026-10-24 15:55:29,897 - app - ERROR - Readiness check failed
+Traceback (most recent call last):
+  File "/opt/venv/lib/python3.12/site-packages/urllib3/connection.py", line 239, in _new_conn
+    sock = connection.create_connection(
+    raise EndpointConnectionError(endpoint_url=request.url, error=e)
+botocore.exceptions.EndpointConnectionError: Could not connect to the endpoint URL: "http://dynamodb-local:8000/"
+
+$ docker logs api-a 2>&1 | grep -c -i -E "secret_access|AWS_SECRET|aws_access_key"   (credential leakage check)
+0
+
+# Container liveness during the outage (Docker HEALTHCHECK uses /health, so the container is not restarted):
+api-a  Up About a minute (healthy)
+api-b  Up About a minute (healthy)
+# Note: with the container stopped its DNS name no longer resolves; DNS lookup time is not
+# bounded by botocore's connect timeout, so /ready took ~8 s in this case.
+
+## 8. Unresponsive DynamoDB (endpoint resolves but does not answer), then recovery
+$ docker start dynamodb-local   (in-memory mode: data from steps 1-6 is gone, so re-seed)
+seed_dynamodb - INFO - Seed complete. Created: sequence, product 1, product 2, product 3. Already present (left unchanged): none
+$ curl /ready
+{"status":"ready"}
+ HTTP 200  (answered in 140 ms)
+$ docker pause dynamodb-local
+paused
+$ curl /ready
+{"status":"not ready"}
+ HTTP 503  (answered in 4554 ms)
+$ curl /health
+HTTP 200
+$ docker unpause dynamodb-local
+unpaused
+$ curl /ready   (recovers without restarting the app)
+{"status":"ready"}
+ HTTP 200  (answered in 101 ms)
+$ curl -X POST /api/v1/orders
+{"created_at":"2026-10-24T15:56:39.787514","id":1,"product_id":1,"product_name":"Widget A","quantity":1,"total_price":29.99}
+ HTTP 201
+
+## 9. Readiness timeout tightened (readiness client read_timeout 2 s -> 1 s), image rebuilt, re-measured
+# api-c = same image and <env>; DynamoDB Local paused, /ready timed, then unpaused (3 runs):
+paused: HTTP 503 in 2914 ms
+unpaused: HTTP 200
+paused: HTTP 503 in 2576 ms
+unpaused: HTTP 200
+paused: HTTP 503 in 2450 ms
+unpaused: HTTP 200
+# Result: an unresponsive DynamoDB is reported as 503 within ~3 s, inside a 5 s load balancer
+# health-check timeout. A DNS-resolution failure (step 7) is not bounded by botocore timeouts.

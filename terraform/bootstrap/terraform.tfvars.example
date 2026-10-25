@@ -1,0 +1,18 @@
+# Copy to terraform.tfvars (gitignored) and fill in. Nothing here is a secret.
+
+aws_region = "eu-west-2" # decision required: must match the platform root
+
+# Required: the exact GitHub repository that may assume the pipeline roles
+github_owner      = "<github-user-or-org>"
+github_repository = "<repository-name>"
+
+# Repositories created after 15 July 2026 use immutable OIDC subjects
+# (repo:OWNER@OWNER_ID/REPO@REPO_ID:...). Look the IDs up with:
+#   gh api repos/<owner>/<repo> --jq '{owner_id: .owner.id, repository_id: .id}'
+github_subject_format = "immutable" # "legacy" only for older repos that have not opted in
+github_owner_id       = "<numeric owner id>"
+github_repository_id  = "<numeric repository id>"
+
+# github_main_branch          = "main"
+# github_deploy_environment   = "production"  # create this Environment with required reviewers
+# create_github_oidc_provider = true          # false if the account already has the GitHub provider

@@ -1,5 +1,8 @@
 # Files that run or are parsed on Linux must keep LF line endings,
-# even when the repository is checked out on Windows.
+# even when the repository is checked out on Windows (core.autocrlf=true).
+# Default: every text file is LF (e.g. the EC2 user-data template, workflows,
+# tfvars); Git still auto-detects binary files.
+*          text=auto eol=lf
 *.sh       text eol=lf
 *.py       text eol=lf
 *.service  text eol=lf

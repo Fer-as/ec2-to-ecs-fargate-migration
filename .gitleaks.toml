@@ -1,0 +1,15 @@
+# gitleaks configuration: all default rules stay active.
+# Loaded automatically from the repository root by `gitleaks git` / `gitleaks dir`.
+
+[extend]
+useDefault = true
+
+# Narrow, reviewed allowlist (exact string only):
+# GPG_KEY is the PUBLIC fingerprint of the CPython release-signing key, set as an
+# environment variable by the official python Docker image. It appears in captured
+# container evidence (evidence/task-05-shared-state/04-docker-final-image.txt) and is
+# not a credential. See docs/security-exceptions.md.
+[[allowlists]]
+description = "Public CPython release-signing key fingerprint (python base image GPG_KEY), not a secret"
+regexTarget = "match"
+regexes = ['''GPG_KEY=7169605F62C751356D054A26A821E680E5FA6305''']

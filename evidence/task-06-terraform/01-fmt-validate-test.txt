@@ -1,0 +1,48 @@
+# Terraform v1.16.2 - offline validation (no AWS credentials, no backend, no plan against AWS)
+
+$ terraform fmt -check -recursive   (terraform/ incl. bootstrap/ and tests/)
+exit code 0: all files formatted
+
+## root: terraform/bootstrap/
+$ terraform init -backend=false
+- Reusing previous version of hashicorp/aws from the dependency lock file
+Terraform has been successfully initialized!
+$ terraform validate
+Success! The configuration is valid.
+
+# provider lock file: 5 h1 hashes (linux_amd64, linux_arm64, windows_amd64, darwin_amd64, darwin_arm64)
+provider "registry.terraform.io/hashicorp/aws" {
+  version     = "5.100.0"
+
+## root: terraform/
+$ terraform init -backend=false
+- Reusing previous version of hashicorp/aws from the dependency lock file
+- Reusing previous version of hashicorp/archive from the dependency lock file
+Terraform has been successfully initialized!
+$ terraform validate
+Success! The configuration is valid.
+
+# provider lock file: 10 h1 hashes (linux_amd64, linux_arm64, windows_amd64, darwin_amd64, darwin_arm64)
+provider "registry.terraform.io/hashicorp/archive" {
+  version     = "2.8.1"
+provider "registry.terraform.io/hashicorp/aws" {
+  version     = "5.100.0"
+
+## Unit tests with MOCKED providers (no AWS calls; checks our own logic only)
+$ terraform test
+tests\platform.tftest.hcl... in progress
+  run "baseline_defaults_send_all_traffic_to_ec2_and_create_no_ecs_service"... pass
+  run "ecs_service_created_once_digest_is_set"... pass
+  run "traffic_to_ecs_rejected_without_image"... pass
+  run "traffic_to_ecs_rejected_while_ec2_uses_memory"... pass
+  run "image_tag_is_rejected"... pass
+  run "invalid_stage_is_rejected"... pass
+  run "half_split_with_shared_storage"... pass
+  run "full_cutover_and_rollback_weights"... pass
+  run "rollback_to_dynamodb_backed_ec2"... pass
+  run "pinned_availability_zones_are_used"... pass
+  run "verification_routes_exist_only_with_ecs"... pass
+tests\platform.tftest.hcl... tearing down
+tests\platform.tftest.hcl... pass
+
+Success! 11 passed, 0 failed.

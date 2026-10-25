@@ -1,0 +1,35 @@
+# Negative tests: every blocking gate must FAIL on a deliberately bad input (run locally, 2026-10-24)
+
+## 1. Trivy gate (same flags as ci.yml) on python:3.12.0-slim (2023 base image)
+  gate exit code: 1 (expected 1)
+  fixable HIGH/CRITICAL findings: 93
+
+## 2. pip-audit --strict with werkzeug==3.0.1
+werkzeug 3.0.1   PYSEC-2026-3417 3.0.6
+werkzeug 3.0.1   PYSEC-2026-4312 3.1.9
+  pip-audit exit code: 1 (expected 1)
+
+## 3. gitleaks (same image/flags as ci.yml) on a throwaway repo with a generated fake AWS key pair
+WRN leaks found: 2
+  gitleaks exit code: 1 (expected 1)
+
+## 4. Checkov (same image as terraform-ci.yml) after adding an SSH-open security group
+Check: CKV_AWS_24: "Ensure no security groups allow ingress from 0.0.0.0:0 to port 22"
+	FAILED for resource: aws_security_group.negative_test
+  checkov exit code: 1 (expected 1)
+  (existing inline exceptions do not cover new resources)
+
+## 5. terraform-ci.yml user-data step (run on Linux, Terraform 1.16.2) with ONE character changed in the template
+memory-mode user data sha256: 07682fb9786dd72c8594c77c8856ad5b36c6ea157106665f8073a0fa3fdb35d2
+::error::memory-mode user data changed
+  (unmodified template: sha256 7a7f4d62...e7326e, STEP PASSED)
+
+## 6. Workflow policy test (ci/tests/test_workflow_policy.py) against mutated copies of the workflows
+mutation apply-in-plan   -> 1 failed, 19 passed   (terraform apply -auto-approve added to the plan job)
+mutation oidc-in-ci      -> 1 failed, 19 passed   (id-token: write added to a CI job)
+mutation unpinned        -> 1 failed, 19 passed   (actions/checkout@v7 instead of a commit SHA)
+
+## 7. Plan guard (ci/tests/test_plan_guard.py, 16 tests)
+application deploy changing traffic weights      -> refused (exit 1)
+application deploy switching storage / replacing EC2 -> refused (exit 1)
+any deploy deleting or replacing the DynamoDB table   -> refused (exit 1)

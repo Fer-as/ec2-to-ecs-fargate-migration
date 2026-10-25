@@ -7,6 +7,8 @@
 # Runtime image
 !app/app.py
 !app/wsgi.py
+!app/storage.py
+!app/seed_dynamodb.py
 !app/requirements.txt
 
 # Test stage only (not copied into the runtime image)

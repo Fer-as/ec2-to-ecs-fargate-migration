@@ -1,0 +1,17 @@
+## terraform v1.16.2: fmt -check -recursive
+  exit code 0
+## terraform/bootstrap: init -backend=false, validate, test (MOCKED providers)
+Terraform has been successfully initialized!
+Success! The configuration is valid.
+Success! 5 passed, 0 failed.
+## terraform/: init -backend=false, validate, test (MOCKED providers)
+Terraform has been successfully initialized!
+Success! The configuration is valid.
+Success! 17 passed, 0 failed.
+## Checkov 3.3.26 (blocking)
+Passed checks: 334, Failed checks: 0, Skipped checks: 30
+  exit code: 0
+## CI helper + workflow policy tests
+49 passed in 0.35s
+## Application tests (Windows; DynamoDB/Gunicorn tests run in CI on Linux)
+62 passed, 24 skipped in 0.44s

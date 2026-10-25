@@ -10,6 +10,7 @@ terraform.tfstate.*
 *.tfvars
 *.tfvars.json
 !terraform.tfvars.example
+!environments/*.tfvars
 
 # Saved plans can contain sensitive values
 *.tfplan

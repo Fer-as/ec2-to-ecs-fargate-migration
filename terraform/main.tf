@@ -1,5 +1,5 @@
 terraform {
-  required_version = ">= 1.5.0"
+  required_version = ">= 1.11.0" # S3 native state locking (use_lockfile)
 
   required_providers {
     aws = {
@@ -77,9 +77,10 @@ resource "aws_internet_gateway" "main" {
 
 # Public Subnet (for EC2 with public IP)
 resource "aws_subnet" "public" {
+  #checkov:skip=CKV_AWS_130:Legacy baseline: the EC2 bootstrap needs internet access at first boot, before the Elastic IP is attached (see docs/security-exceptions.md)
   vpc_id                  = aws_vpc.main.id
   cidr_block              = "10.0.1.0/24"
-  availability_zone       = data.aws_availability_zones.available.names[0]
+  availability_zone       = local.azs[0]
   map_public_ip_on_launch = true
 
   tags = {
@@ -92,7 +93,7 @@ resource "aws_subnet" "public" {
 resource "aws_subnet" "private" {
   vpc_id            = aws_vpc.main.id
   cidr_block        = "10.0.2.0/24"
-  availability_zone = data.aws_availability_zones.available.names[0]
+  availability_zone = local.azs[0]
 
   tags = {
     Name = "${var.project_name}-private-subnet"
@@ -101,6 +102,7 @@ resource "aws_subnet" "private" {
 }
 
 data "aws_availability_zones" "available" {
+  #checkov:skip=CKV_AWS_394:Only a fallback; var.availability_zones pins the AZs (set in every real deployment) (see docs/security-exceptions.md)
   state = "available"
 }
 
@@ -126,16 +128,32 @@ resource "aws_route_table_association" "public" {
 
 # Security Group for EC2 Instance
 resource "aws_security_group" "ec2" {
+  #checkov:skip=CKV_AWS_260:False positive: Checkov renders the empty dynamic HTTP block as a rule without a source; by default no direct rule exists (terraform test secure_network_defaults) and validation rejects 0.0.0.0/0 (see docs/security-exceptions.md)
+  #checkov:skip=CKV_AWS_24:False positive: SSH is only created from var.ssh_allowed_cidr_blocks, whose validation rejects 0.0.0.0/0 (default: no SSH rule) (see docs/security-exceptions.md)
   name_prefix = "${var.project_name}-ec2-"
   description = "Security group for EC2 instance running Flask app"
   vpc_id      = aws_vpc.main.id
 
+  # Direct HTTP for baseline validation; set allowed_cidr_blocks = [] to close it
+  # once all traffic goes through the ALB.
+  dynamic "ingress" {
+    for_each = length(var.allowed_cidr_blocks) > 0 ? [1] : []
+    content {
+      description = "HTTP from allowed CIDR"
+      from_port   = 80
+      to_port     = 80
+      protocol    = "tcp"
+      cidr_blocks = var.allowed_cidr_blocks
+    }
+  }
+
+  # Migration path: Nginx on port 80 from the ALB only
   ingress {
-    description = "HTTP from allowed CIDR"
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = var.allowed_cidr_blocks
+    description     = "HTTP from the ALB"
+    from_port       = 80
+    to_port         = 80
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb.id]
   }
 
   # No HTTPS rule: nothing on the instance listens on 443.
@@ -152,11 +170,21 @@ resource "aws_security_group" "ec2" {
     }
   }
 
+  # Outbound limited to HTTP/HTTPS: apt mirrors (80); pip, AWS CLI, S3, DynamoDB (443).
+  # DNS and NTP use link-local AWS endpoints, which security groups do not filter.
   egress {
-    description = "Allow all outbound traffic"
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
+    description = "HTTP out (apt mirrors)"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    description = "HTTPS out (pip, AWS APIs)"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
 
@@ -227,6 +255,10 @@ data "archive_file" "app" {
 
 # Upload application to S3 bucket (for EC2 to download)
 resource "aws_s3_bucket" "app" {
+  #checkov:skip=CKV_AWS_18:Bundle bucket readable only by the EC2 role; CloudTrail covers API access, a log bucket is out of scope (see docs/security-exceptions.md)
+  #checkov:skip=CKV_AWS_144:Bundle is rebuilt from Git on every apply; replication adds no recovery value (see docs/security-exceptions.md)
+  #checkov:skip=CKV_AWS_145:SSE-S3 (AES256) at rest; a customer-managed KMS key adds cost and key-policy work (see docs/security-exceptions.md)
+  #checkov:skip=CKV2_AWS_62:No consumer for event notifications on the bundle bucket (see docs/security-exceptions.md)
   bucket_prefix = "${var.project_name}-app-"
 
   tags = {
@@ -247,6 +279,25 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "app" {
   rule {
     apply_server_side_encryption_by_default {
       sse_algorithm = "AES256"
+    }
+  }
+}
+
+# Old bundle versions are only needed for a short rollback window
+resource "aws_s3_bucket_lifecycle_configuration" "app" {
+  bucket = aws_s3_bucket.app.id
+
+  rule {
+    id     = "expire-old-bundles"
+    status = "Enabled"
+    filter {}
+
+    noncurrent_version_expiration {
+      noncurrent_days = 30
+    }
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
     }
   }
 }
@@ -289,46 +340,25 @@ resource "aws_iam_role_policy" "ec2_s3_access" {
 
 # User data script for EC2 instance (plain UTF-8 shell script).
 # Output is captured by cloud-init in /var/log/cloud-init-output.log.
+# With legacy_storage_backend = "memory" the rendered script is byte-identical to
+# the previous inline version; "dynamodb" adds /etc/flask-app/flask-app.env.
 locals {
-  user_data = <<-EOF
-    #!/bin/bash
-    set -euo pipefail
-    trap 'echo "[user-data] ERROR: failed at line $LINENO (exit code $?)" | tee -a /var/log/user-data.log' ERR
+  user_data = templatefile("${path.module}/templates/user_data.sh.tftpl", {
+    app_bucket          = aws_s3_bucket.app.id
+    aws_region          = var.aws_region
+    storage_backend     = var.legacy_storage_backend
+    dynamodb_table_name = aws_dynamodb_table.app.name
+  })
+}
 
-    # Variables
-    APP_DIR="/opt/flask-app"
-    S3_URI="s3://${aws_s3_bucket.app.id}/app.zip"
-    AWS_REGION="${var.aws_region}"
-
-    # Install bootstrap tools (wait for the apt lock held by first-boot updates)
-    export DEBIAN_FRONTEND=noninteractive
-    apt-get -o DPkg::Lock::Timeout=600 update -qq
-    apt-get -o DPkg::Lock::Timeout=600 install -y -qq curl unzip
-
-    # Ubuntu 24.04 no longer packages awscli; use the official AWS CLI v2 installer
-    if ! command -v aws >/dev/null 2>&1; then
-      curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-$(uname -m).zip" -o /tmp/awscliv2.zip
-      unzip -q -o /tmp/awscliv2.zip -d /tmp
-      /tmp/aws/install
-      rm -rf /tmp/aws /tmp/awscliv2.zip
-    fi
-
-    # Download and extract the application bundle
-    mkdir -p "$APP_DIR"
-    aws s3 cp "$S3_URI" /tmp/app.zip --region "$AWS_REGION"
-    unzip -q -o /tmp/app.zip -d "$APP_DIR"
-    rm -f /tmp/app.zip
-
-    # Install and start the application (setup.sh exits non-zero if the app is not healthy)
-    bash "$APP_DIR/scripts/setup.sh"
-
-    # Signal completion
-    echo "Application setup completed at $(date)" >> /var/log/user-data.log
-  EOF
+resource "terraform_data" "legacy_storage_mode" {
+  input = var.legacy_storage_backend
 }
 
 # EC2 Instance
 resource "aws_instance" "app" {
+  #checkov:skip=CKV_AWS_126:Legacy baseline kept unchanged; 5-minute basic monitoring plus ALB target-health alarms (see docs/security-exceptions.md)
+  #checkov:skip=CKV_AWS_135:False positive: t3 instance types are EBS-optimised by default (see docs/security-exceptions.md)
   ami                    = data.aws_ami.ubuntu.id
   instance_type          = var.instance_type
   subnet_id              = aws_subnet.public.id
@@ -344,6 +374,14 @@ resource "aws_instance" "app" {
 
   # Ensure S3 object exists before instance starts
   depends_on = [aws_s3_object.app]
+
+  lifecycle {
+    # A newer Canonical AMI must not silently replace the rollback target mid-migration.
+    ignore_changes = [ami]
+    # Switching legacy_storage_backend must re-run user data, which needs a new
+    # instance; the plan then shows the replacement explicitly.
+    replace_triggered_by = [terraform_data.legacy_storage_mode]
+  }
 
   root_block_device {
     volume_type = "gp3"

@@ -1,0 +1,21 @@
+## pip-audit 2.10.1
+$ pip-audit -r app/requirements.txt
+No known vulnerabilities found
+$ pip-audit -r requirements-dev.txt
+No known vulnerabilities found
+$ pip check (local venv)
+No broken requirements found.
+
+## Trivy 0.75.0 on legacy-api:local (vuln + secret), all severities
+scan time (UTC): 2026-10-24T16:02:02
+findings by target type: {'debian': 164}
+  debian: unique CVEs by severity: {'HIGH': 8, 'MEDIUM': 29, 'LOW': 33, 'UNKNOWN': 1}
+python packages scanned (15): Flask==3.1.3, Jinja2==3.1.6, MarkupSafe==3.0.4, Werkzeug==3.1.9, blinker==1.9.0, boto3==1.43.111, botocore==1.43.111, click==8.5.0, gunicorn==26.2.0, itsdangerous==2.2.0, jmespath==1.1.0, python-dateutil==2.9.0.post0, s3transfer==0.19.3, six==1.17.0, urllib3==2.8.0  (from a second run with --list-all-pkgs)
+python-pkg vulnerabilities: 0
+secrets found: 0
+findings with a fixed version available: 0
+HIGH/CRITICAL CVE IDs: ['CVE-2025-69720', 'CVE-2026-16742', 'CVE-2026-54369', 'CVE-2026-76642', 'CVE-2026-78408', 'CVE-2026-78409', 'CVE-2026-78410', 'CVE-2026-9538']
+
+$ docker run aquasec/trivy:0.75.0 config /src/Dockerfile
+│   Target   │    Type    │ Misconfigurations │
+│ Dockerfile │ dockerfile │         0         │

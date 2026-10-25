@@ -1,0 +1,340 @@
+# Approval-gated deployment: gates -> publish image -> saved plan -> APPROVAL -> apply.
+#
+# - Manual trigger on main only; one deployment at a time (concurrency group).
+# - Reuses ci.yml and terraform-ci.yml as blocking gates on the exact commit.
+# - publish: builds, scans (blocking) and pushes the image tagged with the commit SHA,
+#   then reads back its immutable digest.
+# - plan: terraform plan with that digest, saved privately in the S3 state bucket
+#   (never as a workflow artifact), checked by ci/plan_guard.py, sanitised summary.
+# - apply: runs in the protected "production" environment (required reviewers);
+#   assumes the apply role only after approval, verifies the plan checksum and
+#   applies exactly that saved plan, then verifies the rollout (ci/verify_rollout.py).
+#
+# Terraform is the only owner of task definitions, the ECS service and listener
+# weights; this workflow never calls ecs update-service / register-task-definition.
+# traffic_stage comes from terraform/environments/production.tfvars and can only
+# change in a deployment_kind=platform run (plan_guard refuses it otherwise).
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      deployment_kind:
+        description: "application = new image only; platform = reviewed infrastructure/migration change (incl. traffic_stage)"
+        type: choice
+        options:
+          - application
+          - platform
+        default: application
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  TERRAFORM_VERSION: "1.16.2"
+  TRIVY_IMAGE: aquasec/trivy@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa # 0.75.0
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+  ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+  TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+  TF_PLAN_PREFIX: ${{ vars.TF_PLAN_PREFIX }}
+  TF_IN_AUTOMATION: "1"
+  TF_INPUT: "0"
+
+jobs:
+  preflight:
+    name: Preflight (trusted ref, configuration)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Only main may deploy
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Deployments are only allowed from refs/heads/main (got $GITHUB_REF)"
+          exit 1
+
+      - name: Required repository variables are set and well-formed
+        env:
+          AWS_PLAN_ROLE_ARN: ${{ vars.AWS_PLAN_ROLE_ARN }}
+          AWS_IMAGE_PUSH_ROLE_ARN: ${{ vars.AWS_IMAGE_PUSH_ROLE_ARN }}
+          AWS_APPLY_ROLE_ARN: ${{ vars.AWS_APPLY_ROLE_ARN }}
+          TF_AVAILABILITY_ZONES: ${{ vars.TF_AVAILABILITY_ZONES }}
+        run: |
+          fail=0
+          check() { if [[ ! "${!1}" =~ $2 ]]; then echo "::error::repository variable $1 is missing or malformed"; fail=1; fi; }
+          check AWS_ACCOUNT_ID '^[0-9]{12}$'
+          check AWS_REGION '^[a-z]{2}(-[a-z]+)+-[0-9]$'
+          check ECR_REPOSITORY '^[a-z0-9._/-]+$'
+          check TF_STATE_BUCKET '^[a-z0-9.-]{3,63}$'
+          check TF_PLAN_PREFIX '^plans/[a-z0-9._-]+$'
+          check TF_AVAILABILITY_ZONES '^\[.*\]$'
+          for role in AWS_PLAN_ROLE_ARN AWS_IMAGE_PUSH_ROLE_ARN AWS_APPLY_ROLE_ARN; do
+            check "$role" "^arn:aws:iam::${AWS_ACCOUNT_ID}:role/gha-[A-Za-z0-9+=,.@_-]+$"
+          done
+          exit "$fail"
+
+  ci:
+    name: CI gate
+    needs: preflight
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  terraform-ci:
+    name: Terraform gate
+    needs: preflight
+    uses: ./.github/workflows/terraform-ci.yml
+    permissions:
+      contents: read
+
+  publish:
+    name: Publish image (commit SHA tag -> digest)
+    needs: [ci, terraform-ci]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      image_digest: ${{ steps.digest.outputs.digest }}
+    env:
+      IMAGE_TAG: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Show the OIDC subject AWS will see (token itself is never printed)
+        run: |
+          python3 - <<'EOF'
+          import base64, json, os, urllib.request
+          req = urllib.request.Request(os.environ["ACTIONS_ID_TOKEN_REQUEST_URL"] + "&audience=sts.amazonaws.com",
+                                       headers={"Authorization": "bearer " + os.environ["ACTIONS_ID_TOKEN_REQUEST_TOKEN"]})
+          token = json.load(urllib.request.urlopen(req))["value"]
+          payload = token.split(".")[1]
+          claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+          print("sub:", claims["sub"])
+          print("repository_id:", claims.get("repository_id"), "repository_owner_id:", claims.get("repository_owner_id"))
+          EOF
+
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_IMAGE_PUSH_ROLE_ARN }}
+          role-session-name: gha-publish-${{ github.run_id }}
+          aws-region: ${{ vars.AWS_REGION }}
+          allowed-account-ids: ${{ vars.AWS_ACCOUNT_ID }}
+          role-duration-seconds: 1800
+
+      - name: Build production image
+        run: |
+          echo "REGISTRY=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com" >> "$GITHUB_ENV"
+          docker build --pull -t "legacy-api:${IMAGE_TAG}" .
+
+      - name: Trivy gate on the exact image to publish (blocking)
+        run: |
+          docker save "legacy-api:${IMAGE_TAG}" -o "$RUNNER_TEMP/image.tar"
+          docker run --rm -v "$RUNNER_TEMP:/scan" "$TRIVY_IMAGE" image --quiet --input /scan/image.tar \
+            --scanners vuln,secret --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --format table
+
+      - name: Push (tag = commit SHA; ECR tags are immutable)
+        run: |
+          if aws ecr describe-images --repository-name "$ECR_REPOSITORY" --image-ids "imageTag=${IMAGE_TAG}" >/dev/null 2>&1; then
+            echo "Image for commit ${IMAGE_TAG} already exists in ECR (re-run); reusing it."
+          else
+            aws ecr get-login-password | docker login --username AWS --password-stdin "$REGISTRY"
+            docker tag "legacy-api:${IMAGE_TAG}" "${REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+            docker push "${REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+            docker logout "$REGISTRY"
+          fi
+
+      - name: Read back the immutable digest
+        id: digest
+        run: |
+          digest=$(aws ecr describe-images --repository-name "$ECR_REPOSITORY" \
+            --image-ids "imageTag=${IMAGE_TAG}" --query 'imageDetails[0].imageDigest' --output text)
+          if [[ ! "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            echo "::error::unexpected image digest '$digest'"; exit 1
+          fi
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Image published"
+            echo "- Tag: \`${IMAGE_TAG}\` (commit)"
+            echo "- Digest: \`${digest}\` (used by Terraform)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  plan:
+    name: Terraform plan (saved)
+    needs: publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      has_changes: ${{ steps.plan.outputs.has_changes }}
+      plan_key: ${{ steps.store.outputs.plan_key }}
+      plan_sha256: ${{ steps.store.outputs.plan_sha256 }}
+    env:
+      IMAGE_DIGEST: ${{ needs.publish.outputs.image_digest }}
+      DEPLOYMENT_KIND: ${{ inputs.deployment_kind }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
+          role-session-name: gha-plan-${{ github.run_id }}
+          aws-region: ${{ vars.AWS_REGION }}
+          allowed-account-ids: ${{ vars.AWS_ACCOUNT_ID }}
+          role-duration-seconds: 1800
+
+      - name: Terraform variables (account-specific values from repository settings)
+        env:
+          TF_AVAILABILITY_ZONES: ${{ vars.TF_AVAILABILITY_ZONES }}
+          TF_ALLOWED_CIDR_BLOCKS: ${{ secrets.TF_ALLOWED_CIDR_BLOCKS }}
+          TF_VERIFICATION_CIDR_BLOCKS: ${{ secrets.TF_VERIFICATION_CIDR_BLOCKS }}
+          TF_ALARM_EMAIL: ${{ secrets.TF_ALARM_EMAIL }}
+        run: |
+          {
+            echo "TF_VAR_aws_region=${AWS_REGION}"
+            echo "TF_VAR_availability_zones=${TF_AVAILABILITY_ZONES}"
+            [ -n "$TF_ALLOWED_CIDR_BLOCKS" ] && echo "TF_VAR_allowed_cidr_blocks=${TF_ALLOWED_CIDR_BLOCKS}"
+            [ -n "$TF_VERIFICATION_CIDR_BLOCKS" ] && echo "TF_VAR_verification_cidr_blocks=${TF_VERIFICATION_CIDR_BLOCKS}"
+            [ -n "$TF_ALARM_EMAIL" ] && echo "TF_VAR_alarm_email=${TF_ALARM_EMAIL}"
+            true
+          } >> "$GITHUB_ENV"
+
+      - name: terraform init (remote state, lock file respected)
+        run: |
+          terraform -chdir=terraform init -lockfile=readonly \
+            -backend-config="bucket=${TF_STATE_BUCKET}" -backend-config="region=${AWS_REGION}"
+
+      - name: terraform plan (output kept off the public log)
+        id: plan
+        run: |
+          set +e
+          terraform -chdir=terraform plan -lock-timeout=5m -no-color -detailed-exitcode \
+            -var-file=environments/production.tfvars -var "app_image_digest=${IMAGE_DIGEST}" \
+            -out=tfplan > "$RUNNER_TEMP/plan.log" 2>&1
+          code=$?
+          set -e
+          if [ "$code" -eq 1 ]; then
+            echo "::error::terraform plan failed"
+            grep -E "Error:" -A 8 "$RUNNER_TEMP/plan.log" | head -60
+            exit 1
+          fi
+          echo "has_changes=$([ "$code" -eq 2 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: Plan guard and sanitised summary
+        run: |
+          terraform -chdir=terraform show -json tfplan > "$RUNNER_TEMP/plan.json"
+          python3 ci/plan_guard.py --plan-json "$RUNNER_TEMP/plan.json" \
+            --kind "$DEPLOYMENT_KIND" --summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Store the saved plan privately (S3, encrypted, short retention)
+        id: store
+        run: |
+          key="${TF_PLAN_PREFIX}/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/tfplan"
+          sha=$(sha256sum terraform/tfplan | cut -d' ' -f1)
+          aws s3 cp terraform/tfplan "s3://${TF_STATE_BUCKET}/${key}" --sse AES256 --only-show-errors
+          aws s3 cp "$RUNNER_TEMP/plan.log" "s3://${TF_STATE_BUCKET}/${key%/tfplan}/plan.log" --sse AES256 --only-show-errors
+          echo "plan_key=$key" >> "$GITHUB_OUTPUT"
+          echo "plan_sha256=$sha" >> "$GITHUB_OUTPUT"
+          {
+            echo ""
+            echo "Saved plan: \`s3://<state-bucket>/${key}\` (sha256 \`${sha}\`)."
+            echo "Full plan text for reviewers: \`${key%/tfplan}/plan.log\` in the same bucket (AWS access required)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove local plan files
+        if: always()
+        run: rm -f terraform/tfplan "$RUNNER_TEMP/plan.json" "$RUNNER_TEMP/plan.log"
+
+  apply:
+    name: Apply approved plan
+    needs: [plan]
+    if: needs.plan.outputs.has_changes == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    environment:
+      name: production
+      url: ${{ steps.verify.outputs.alb_url }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PLAN_KEY: ${{ needs.plan.outputs.plan_key }}
+      PLAN_SHA256: ${{ needs.plan.outputs.plan_sha256 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      # Credentials are requested only now, after the environment approval
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_APPLY_ROLE_ARN }}
+          role-session-name: gha-apply-${{ github.run_id }}
+          aws-region: ${{ vars.AWS_REGION }}
+          allowed-account-ids: ${{ vars.AWS_ACCOUNT_ID }}
+          role-duration-seconds: 3600
+
+      - name: Fetch the approved plan and verify its checksum
+        run: |
+          aws s3 cp "s3://${TF_STATE_BUCKET}/${PLAN_KEY}" terraform/tfplan --only-show-errors
+          echo "${PLAN_SHA256}  terraform/tfplan" | sha256sum -c -
+
+      - name: terraform init (same backend and lock file)
+        run: |
+          terraform -chdir=terraform init -lockfile=readonly \
+            -backend-config="bucket=${TF_STATE_BUCKET}" -backend-config="region=${AWS_REGION}"
+
+      - name: terraform apply EXACTLY the approved saved plan
+        run: terraform -chdir=terraform apply -lock-timeout=5m -no-color tfplan
+
+      - name: Verify rollout (ECS stable, targets healthy, /health and /ready)
+        id: verify
+        run: |
+          terraform -chdir=terraform output -json > "$RUNNER_TEMP/outputs.json"
+          python3 -c 'import json,sys; print("alb_url=" + json.load(open(sys.argv[1]))["alb_url"]["value"])' \
+            "$RUNNER_TEMP/outputs.json" >> "$GITHUB_OUTPUT"
+          python3 ci/verify_rollout.py --outputs "$RUNNER_TEMP/outputs.json" --region "$AWS_REGION" \
+            | tee "$RUNNER_TEMP/verify.txt"
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "## Apply"
+            echo '```'
+            cat "$RUNNER_TEMP/verify.txt" 2>/dev/null || echo "verification did not run"
+            echo '```'
+            echo "Rollback: set traffic_stage = 0 in terraform/environments/production.tfvars and run a platform deployment."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove local plan
+        if: always()
+        run: rm -f terraform/tfplan

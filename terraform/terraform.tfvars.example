@@ -1,19 +1,41 @@
-# Copy this file to terraform.tfvars and customize
+# Copy this file to terraform.tfvars (gitignored) and customize
 
-aws_region   = "us-east-1"
+aws_region   = "eu-west-2" # decision required; must match terraform/bootstrap
 project_name = "legacy-api"
 environment  = "production"
+
+# Pin the two AZs before the first apply (prevents subnet/EC2 replacement later)
+availability_zones = ["eu-west-2a", "eu-west-2b"]
 
 # EC2 Configuration
 instance_type = "t3.micro"
 
-# Network Access (HTTP, port 80)
-allowed_cidr_blocks = ["0.0.0.0/0"]  # Restrict this in production!
+# Direct HTTP to the legacy EC2 (baseline validation path). Use your own IP as a /32;
+# set [] once all traffic goes through the ALB.
+allowed_cidr_blocks = ["203.0.113.10/32"]
 
 # Optional SSH access. SSH is closed unless both are set.
 # Use your own public IP as a /32, never 0.0.0.0/0.
 # key_pair_name           = "my-keypair"
 # ssh_allowed_cidr_blocks = ["203.0.113.10/32"]
+
+# --- Migration (see docs/aws-platform.md for the order of changes) ---------------------
+
+# Immutable image digest pushed to ECR (leave unset until the image exists)
+# app_image_digest = "sha256:<64 hex characters>"
+
+# "memory" until the table is seeded and the write freeze starts, then "dynamodb"
+# (switching replaces the EC2 instance)
+legacy_storage_backend = "memory"
+
+# 0 = EC2 100% | 1 = EC2 90 / ECS 10 | 2 = 50 / 50 | 3 = ECS 100%   (rollback = 0)
+traffic_stage = 0
+
+# web_concurrency = 2
+# alarm_email     = "you@example.com"   # confirm the subscription email
+
+# Teardown only: set false and apply before terraform destroy
+# dynamodb_deletion_protection = false
 
 # Optional: Route53 Configuration for DNS
 # domain_name     = "api.example.com"

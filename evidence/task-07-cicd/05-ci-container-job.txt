@@ -1,0 +1,41 @@
+# ci.yml 'container' job: its own step scripts run locally (Docker Desktop, python3 shim); upload-artifact step not run
+::step:: Build production image
+::step:: Run hardened container and wait for Docker health
+Docker health: healthy
+::step:: Verify non-root runtime user
+image user=10001:10001 process uid=10001
+::step:: API smoke tests
+Failures: 0
+::step:: Trivy full report (all severities, incl. unfixed)
+::step:: Trivy gate - fixable HIGH/CRITICAL vulnerabilities and secrets (blocking)
+smoke checks passed: 17/17
+trivy gate: exit 0 (job completed)
+
+## Job summary produced by ci/trivy_summary.py
+## Trivy image scan (full report)
+
+| Severity | Unique CVEs | With a fix available |
+|---|---|---|
+| CRITICAL | 0 | 0 |
+| HIGH | 8 | 0 |
+| MEDIUM | 29 | 0 |
+| LOW | 33 | 0 |
+| UNKNOWN | 1 | 0 |
+
+- Findings by package type: {'debian': 164}
+- Secrets: 0
+
+**Gate input:** 0 fixable HIGH/CRITICAL CVE(s) (gate passes).
+
+| HIGH/CRITICAL CVE | Packages | Status | Fixed in |
+|---|---|---|---|
+| CVE-2025-69720 (HIGH) | libncursesw6, libtinfo6, ncurses-base, ncurses-bin | affected | - |
+| CVE-2026-16742 (HIGH) | libsystemd0, libudev1 | affected | - |
+| CVE-2026-54369 (HIGH) | libacl1 | affected | - |
+| CVE-2026-76642 (HIGH) | bsdutils, libblkid1, liblastlog2-2, libmount1, libsmartcols1, libuuid1, login, mount, util-linux | affected | - |
+| CVE-2026-78408 (HIGH) | bsdutils, libblkid1, liblastlog2-2, libmount1, libsmartcols1, libuuid1, login, mount, util-linux | affected | - |
+| CVE-2026-78409 (HIGH) | bsdutils, libblkid1, liblastlog2-2, libmount1, libsmartcols1, libuuid1, login, mount, util-linux | affected | - |
+| CVE-2026-78410 (HIGH) | bsdutils, libblkid1, liblastlog2-2, libmount1, libsmartcols1, libuuid1, login, mount, util-linux | affected | - |
+| CVE-2026-9538 (HIGH) | perl-base | fix_deferred | - |
+
+Unfixed HIGH findings are tracked in docs/security-exceptions.md.

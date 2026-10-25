@@ -51,7 +51,9 @@ ENV PATH="/opt/venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
     APP_NAME=legacy-api \
     APP_VERSION=1.0.0 \
-    ENVIRONMENT=production
+    ENVIRONMENT=production \
+    STORAGE_BACKEND=memory \
+    WEB_CONCURRENCY=1
 
 # Unprivileged user with a stable numeric UID/GID (no home, no login shell).
 # pip is removed from the runtime image: nothing is installed at runtime.
@@ -65,7 +67,7 @@ COPY --from=builder /opt/venv /opt/venv
 
 WORKDIR /app
 # Code is owned by root and read-only for the app user.
-COPY --chmod=0644 app/app.py app/wsgi.py ./
+COPY --chmod=0644 app/app.py app/wsgi.py app/storage.py app/seed_dynamodb.py ./
 
 USER 10001:10001
 EXPOSE 5000
@@ -78,14 +80,15 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --start-interval=2s -
 # Gunicorn runs as PID 1 (exec form), so it receives SIGTERM directly and
 # shuts down gracefully, finishing in-flight requests within --graceful-timeout.
 #
-# ONE worker on purpose: orders and stock live in process memory, and every
-# worker would keep its own copy (proven by tests/test_gunicorn_workers.py).
-# This only keeps ONE container consistent. Several containers/ECS tasks still
-# each have their own state, and all data is lost on restart. --max-requests is
-# not used because recycling the worker would wipe the data.
+# Workers come from WEB_CONCURRENCY (Gunicorn reads it), default 1.
+# STORAGE_BACKEND=memory: keep ONE worker. Each worker would have its own copy of
+# orders and stock (proven by tests/test_gunicorn_workers.py), several
+# containers/tasks would too, and a restart loses all data.
+# STORAGE_BACKEND=dynamodb: state is shared and durable, so more workers and tasks
+# are safe (set DYNAMODB_TABLE_NAME and AWS_REGION; credentials from the task role).
+# --max-requests is not used because recycling a worker would wipe in-memory data.
 CMD ["gunicorn", \
      "--bind", "0.0.0.0:5000", \
-     "--workers", "1", \
      "--worker-class", "sync", \
      "--timeout", "60", \
      "--graceful-timeout", "25", \

@@ -2,6 +2,10 @@
 Legacy Flask Application
 A simple Python Flask API running on EC2 behind Nginx.
 This is the "before" state that students will migrate to ECS.
+
+Storage is selected with STORAGE_BACKEND (see storage.py):
+  memory   - original in-process storage (default, one process only)
+  dynamodb - shared, durable storage for several workers/containers/tasks
 """
 
 import os
@@ -9,6 +13,8 @@ import logging
 from datetime import datetime
 from flask import Flask, jsonify, request
 from werkzeug.exceptions import BadRequest, HTTPException
+
+from storage import InsufficientStock, ProductNotFound, StoreBusy, create_store
 
 # Configure logging
 logging.basicConfig(
@@ -24,15 +30,9 @@ APP_NAME = os.getenv('APP_NAME', 'legacy-api')
 APP_VERSION = os.getenv('APP_VERSION', '1.0.0')
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'production')
 
-# In-memory storage (realistic legacy behavior)
-products_db = {
-    1: {"id": 1, "name": "Widget A", "price": 29.99, "stock": 100},
-    2: {"id": 2, "name": "Widget B", "price": 39.99, "stock": 50},
-    3: {"id": 3, "name": "Widget C", "price": 49.99, "stock": 75},
-}
-
-orders_db = []
-order_counter = 1
+# Products, orders and order IDs live in the selected storage backend
+store = create_store()
+logger.info("Storage backend: %s", type(store).__name__)
 
 
 def is_integer(value):
@@ -42,7 +42,7 @@ def is_integer(value):
 
 @app.route('/health', methods=['GET'])
 def health():
-    """Health check endpoint"""
+    """Health check endpoint (liveness: does not touch storage)"""
     return jsonify({
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat(),
@@ -52,13 +52,25 @@ def health():
     }), 200
 
 
+@app.route('/ready', methods=['GET'])
+def ready():
+    """Readiness: 200 only if the storage backend is reachable and initialised."""
+    try:
+        store.check_ready()
+    except Exception:
+        logger.exception("Readiness check failed")
+        return jsonify({"status": "not ready"}), 503
+    return jsonify({"status": "ready"}), 200
+
+
 @app.route('/api/v1/products', methods=['GET'])
 def get_products():
     """Get all products"""
     logger.info("GET /api/v1/products")
+    products = store.list_products()
     return jsonify({
-        "products": list(products_db.values()),
-        "count": len(products_db)
+        "products": products,
+        "count": len(products)
     }), 200
 
 
@@ -66,7 +78,7 @@ def get_products():
 def get_product(product_id):
     """Get a specific product"""
     logger.info(f"GET /api/v1/products/{product_id}")
-    product = products_db.get(product_id)
+    product = store.get_product(product_id)
     if not product:
         return jsonify({"error": "Product not found"}), 404
     return jsonify(product), 200
@@ -76,18 +88,18 @@ def get_product(product_id):
 def get_orders():
     """Get all orders"""
     logger.info("GET /api/v1/orders")
+    orders = store.list_orders()
     return jsonify({
-        "orders": orders_db,
-        "count": len(orders_db)
+        "orders": orders,
+        "count": len(orders)
     }), 200
 
 
 @app.route('/api/v1/orders', methods=['POST'])
 def create_order():
     """Create a new order"""
-    global order_counter
     logger.info("POST /api/v1/orders")
-    
+
     try:
         data = request.get_json()
         if not data:
@@ -105,34 +117,24 @@ def create_order():
         if not is_integer(quantity) or quantity < 1:
             raise BadRequest("quantity must be a positive integer")
 
-        product = products_db.get(product_id)
-        if not product:
+        try:
+            order = store.create_order(product_id, quantity, datetime.utcnow().isoformat())
+        except ProductNotFound:
             return jsonify({"error": "Product not found"}), 404
-        
-        if quantity > product['stock']:
+        except InsufficientStock:
             return jsonify({"error": "Insufficient stock"}), 400
-        
-        order = {
-            "id": order_counter,
-            "product_id": product_id,
-            "product_name": product['name'],
-            "quantity": quantity,
-            "total_price": product['price'] * quantity,
-            "created_at": datetime.utcnow().isoformat()
-        }
-        
-        orders_db.append(order)
-        products_db[product_id]['stock'] -= quantity
-        order_counter += 1
-        
+        except StoreBusy:
+            logger.warning("Order not created: storage write contention, retries exhausted")
+            return jsonify({"error": "Service temporarily unavailable, please retry"}), 503
+
         logger.info(f"Order created: {order['id']}")
         return jsonify(order), 201
-        
+
     except HTTPException as e:
         # Client errors such as 400 (bad JSON) and 415 (not JSON) keep their status code.
         return jsonify({"error": str(e)}), e.code
-    except Exception as e:
-        logger.error(f"Error creating order: {str(e)}")
+    except Exception:
+        logger.exception("Error creating order")
         return jsonify({"error": "Internal server error"}), 500
 
 
@@ -140,10 +142,11 @@ def create_order():
 def get_stats():
     """Get application statistics"""
     logger.info("GET /api/v1/stats")
+    total_products, total_orders, total_revenue = store.stats()
     return jsonify({
-        "total_products": len(products_db),
-        "total_orders": len(orders_db),
-        "total_revenue": sum(order['total_price'] for order in orders_db),
+        "total_products": total_products,
+        "total_orders": total_orders,
+        "total_revenue": total_revenue,
         "timestamp": datetime.utcnow().isoformat()
     }), 200
 
@@ -164,7 +167,7 @@ def method_not_allowed(error):
 
 @app.errorhandler(500)
 def internal_error(error):
-    logger.error(f"Internal server error: {str(error)}")
+    logger.error("Internal server error: %r", getattr(error, "original_exception", error))
     return jsonify({"error": "Internal server error"}), 500
 
 

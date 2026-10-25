@@ -1,0 +1,35 @@
+# Terraform v1.16.2: offline validation (no AWS, no backend)
+$ terraform fmt -check -recursive
+exit code 0
+## terraform/bootstrap
+Terraform has been successfully initialized!
+Success! The configuration is valid.
+
+## terraform/
+Terraform has been successfully initialized!
+Success! The configuration is valid.
+
+
+$ terraform test   (MOCKED providers)
+tests\platform.tftest.hcl... in progress
+  run "baseline_defaults_send_all_traffic_to_ec2_and_create_no_ecs_service"... pass
+  run "ecs_service_created_once_digest_is_set"... pass
+  run "traffic_to_ecs_rejected_without_image"... pass
+  run "traffic_to_ecs_rejected_while_ec2_uses_memory"... pass
+  run "image_tag_is_rejected"... pass
+  run "invalid_stage_is_rejected"... pass
+  run "half_split_with_shared_storage"... pass
+  run "full_cutover_and_rollback_weights"... pass
+  run "rollback_to_dynamodb_backed_ec2"... pass
+  run "pinned_availability_zones_are_used"... pass
+  run "verification_routes_need_operator_cidrs"... pass
+  run "no_public_verification_routes_without_operator_cidrs"... pass
+  run "verification_cidrs_reject_the_whole_internet"... pass
+  run "digest_alone_creates_task_definitions_but_no_service"... pass
+  run "service_without_image_is_rejected"... pass
+  run "secure_network_defaults"... pass
+  run "direct_ec2_access_cannot_be_opened_to_the_internet"... pass
+tests\platform.tftest.hcl... tearing down
+tests\platform.tftest.hcl... pass
+
+Success! 17 passed, 0 failed.

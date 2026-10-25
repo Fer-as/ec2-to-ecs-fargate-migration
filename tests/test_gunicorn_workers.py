@@ -1,7 +1,11 @@
-"""Known defect: each Gunicorn worker process keeps its own in-memory state.
+"""Shared state across Gunicorn worker processes.
 
-Runs the real app under Gunicorn with 2 sync workers. Gunicorn needs a
-POSIX OS, so this test is skipped on Windows and runs on Linux/macOS/CI.
+Runs the real app under Gunicorn with 2 sync workers, once per storage backend:
+  memory   - KNOWN DEFECT (kept as evidence): each worker has its own orders and
+             stock, so these tests are expected to fail (strict xfail).
+  dynamodb - the fix: both workers share DynamoDB (Local), so they must pass.
+             Runs only when DYNAMODB_LOCAL_ENDPOINT is set.
+Gunicorn needs a POSIX OS, so these tests are skipped on Windows.
 
 To make the result deterministic, worker A is kept busy with a half-sent
 request. The next order must then be served by worker B. When the held
@@ -18,7 +22,7 @@ import urllib.request
 
 import pytest
 
-from conftest import APP_DIR, known_defect
+from conftest import APP_DIR
 
 pytestmark = pytest.mark.skipif(
     os.name == "nt", reason="Gunicorn cannot run on Windows; runs on Linux/CI"
@@ -45,8 +49,20 @@ def _wait_until_healthy(base_url, proc, timeout=20):
     raise RuntimeError("gunicorn did not become healthy in time")
 
 
+def _backends(defect_reason):
+    """memory (known defect, strict xfail) and dynamodb (must pass)."""
+    return pytest.mark.parametrize("gunicorn_server", [
+        pytest.param("memory", marks=[
+            pytest.mark.known_defect,
+            pytest.mark.xfail(strict=True, raises=AssertionError, reason=defect_reason)]),
+        "dynamodb",
+    ], indirect=True)
+
+
 @pytest.fixture
-def gunicorn_server():
+def gunicorn_server(request):
+    if request.param == "dynamodb":
+        request.getfixturevalue("ddb_table")  # fresh seeded table; sets STORAGE_BACKEND etc.
     port = _free_port()
     env = {k: v for k, v in os.environ.items()
            if k not in ("APP_NAME", "APP_VERSION", "ENVIRONMENT")}
@@ -109,7 +125,7 @@ def _while_worker_a_is_busy(port, method, path, body, action):
     return result, status, json.loads(payload)
 
 
-@known_defect("Each Gunicorn worker has its own order counter; workers hand out duplicate order IDs")
+@_backends("Each Gunicorn worker has its own order counter; workers hand out duplicate order IDs")
 def test_workers_share_order_ids(gunicorn_server):
     port, base_url = gunicorn_server
     body = json.dumps({"product_id": 1, "quantity": 1}).encode()
@@ -128,7 +144,7 @@ def test_workers_share_order_ids(gunicorn_server):
     )
 
 
-@known_defect("Each Gunicorn worker has its own inventory; stock differs between workers")
+@_backends("Each Gunicorn worker has its own inventory; stock differs between workers")
 def test_workers_share_inventory(gunicorn_server):
     port, base_url = gunicorn_server
 

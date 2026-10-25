@@ -1,0 +1,7 @@
+$ DYNAMODB_LOCAL_ENDPOINT=http://127.0.0.1:8000 venv\Scripts\python -m pytest -q   (Windows, Python 3.12.10)
+........................................ssss............................ [ 83%]
+..............                                                           [100%]
+=========================== short test summary info ===========================
+SKIPPED [2] tests\test_gunicorn_workers.py:128: Gunicorn cannot run on Windows; runs on Linux/CI
+SKIPPED [2] tests\test_gunicorn_workers.py:147: Gunicorn cannot run on Windows; runs on Linux/CI
+82 passed, 4 skipped in 20.62s

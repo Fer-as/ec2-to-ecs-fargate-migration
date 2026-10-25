@@ -124,6 +124,15 @@ if ! wait_for_url "http://127.0.0.1/health" || ! wait_for_url "http://127.0.0.1/
     exit 1
 fi
 
+# Readiness through Nginx: in dynamodb mode this proves the table is reachable,
+# seeded and permitted by the instance role (in memory mode it is always ready).
+log "Waiting for /ready (storage backend reachable and initialised)..."
+if ! wait_for_url "http://127.0.0.1/ready"; then
+    log "ERROR: /ready did not return 200 - check /etc/flask-app/flask-app.env, the instance role and the seed step"
+    journalctl -u flask-app -n 50 --no-pager || true
+    exit 1
+fi
+
 log "Setup completed successfully!"
 log "Application is available on port 80"
 log "Logs are available at:"

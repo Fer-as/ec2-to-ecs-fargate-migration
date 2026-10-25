@@ -1,0 +1,161 @@
+# Terraform CI: offline validation and security scan for both roots.
+#
+# No AWS credentials and no backend: init -backend=false, validate, terraform test
+# with mocked providers, Checkov (blocking; reviewed exceptions are inline
+# checkov:skip comments listed in docs/security-exceptions.md).
+name: Terraform CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tf-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  TERRAFORM_VERSION: "1.16.2"
+  CHECKOV_IMAGE: bridgecrew/checkov@sha256:8e63f217cb084f1c1a067326a9cf6e37d54bdc82e5822210d50ca4e2f647dd93 # 3.3.26
+  SHELLCHECK_IMAGE: koalaman/shellcheck@sha256:2097951f02e735b613f4a34de20c40f937a6c8f18ecb170612c88c34517221fb # v0.10.0
+  # sha256 of the memory-mode user data rendered with the inputs below; it must stay
+  # byte-identical to the original inline script so existing instances see no change
+  USER_DATA_MEMORY_SHA256: 7a7f4d624e60ff493804c70e1000161225fe15251a980dd1d002feca68e7326e
+
+jobs:
+  validate:
+    name: fmt, validate, test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - name: terraform fmt -check
+        run: terraform fmt -check -recursive -diff terraform
+
+      - name: init (no backend) and validate - bootstrap and platform
+        run: |
+          for root in terraform/bootstrap terraform; do
+            echo "::group::$root"
+            terraform -chdir="$root" init -backend=false -input=false -lockfile=readonly
+            terraform -chdir="$root" validate
+            echo "::endgroup::"
+          done
+
+      - name: terraform test (mocked providers, no AWS) - bootstrap and platform
+        run: |
+          terraform -chdir=terraform/bootstrap test -no-color 2>&1 | tee "$RUNNER_TEMP/tftest.txt"
+          terraform -chdir=terraform test -no-color 2>&1 | tee -a "$RUNNER_TEMP/tftest.txt"
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "## Terraform validation"
+            echo "- fmt, init -backend=false and validate: bootstrap and platform roots"
+            echo '```'
+            grep -E '^  run "|^(Success|Failure)!' "$RUNNER_TEMP/tftest.txt" 2>/dev/null || echo "no test output"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  user-data:
+    name: EC2 user data render check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - name: Render templates/user_data.sh.tftpl in both storage modes
+        run: |
+          # Local backend override exists only in this CI workspace (lets `console` run offline)
+          printf 'terraform {\n  backend "local" {}\n}\n' > terraform/backend_override.tf
+          terraform -chdir=terraform init -input=false -lockfile=readonly > /dev/null
+          vars='app_bucket="test-bucket", aws_region="us-east-1", dynamodb_table_name="legacy-api-production"'
+          for mode in memory dynamodb; do
+            printf 'templatefile("templates/user_data.sh.tftpl", {%s, storage_backend="%s"})\n' "$vars" "$mode" \
+              | terraform -chdir=terraform console \
+              | python3 -c 'import sys; s=sys.stdin.read().strip(); assert s.startswith("<<EOT"), s[:200]; sys.stdout.write(s[6:-3])' \
+              > "$RUNNER_TEMP/user-data-$mode.sh"
+            bash -n "$RUNNER_TEMP/user-data-$mode.sh"
+          done
+          # Hash computed by Terraform itself (console display adds a trailing newline to heredocs)
+          actual=$(printf 'sha256(templatefile("templates/user_data.sh.tftpl", {%s, storage_backend="memory"}))\n' "$vars" \
+            | terraform -chdir=terraform console | tr -d '"')
+          echo "memory-mode user data sha256: $actual"
+          [ "$actual" = "$USER_DATA_MEMORY_SHA256" ] || { echo "::error::memory-mode user data changed"; exit 1; }
+          grep -q '^STORAGE_BACKEND=dynamodb$' "$RUNNER_TEMP/user-data-dynamodb.sh"
+
+      - name: shellcheck rendered user data
+        run: docker run --rm -v "$RUNNER_TEMP:/mnt:ro" "$SHELLCHECK_IMAGE" -S style /mnt/user-data-memory.sh /mnt/user-data-dynamodb.sh
+
+  checkov:
+    name: Checkov (blocking)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Checkov - fails on any finding without a reviewed inline exception
+        run: |
+          docker run --rm -v "$PWD/terraform:/tf:ro" "$CHECKOV_IMAGE" \
+            -d /tf --framework terraform --compact --skip-download 2>&1 | tee "$RUNNER_TEMP/checkov.txt"
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "## Checkov"
+            echo '```'
+            grep -E "^(Passed|Failed|Skipped) checks|FAILED for resource" "$RUNNER_TEMP/checkov.txt" || echo "no output"
+            echo '```'
+            echo "Skipped = reviewed inline exceptions (docs/security-exceptions.md)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  terraform-gate:
+    name: Terraform gate
+    if: always()
+    needs: [validate, user-data, checkov]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: All Terraform jobs must succeed
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'EOF' | tee -a "$GITHUB_STEP_SUMMARY"
+          import json, os, sys
+          needs = json.loads(os.environ["RESULTS"])
+          print("## Terraform gate")
+          print("")
+          print("| Job | Result |")
+          print("|---|---|")
+          for job, value in needs.items():
+              print(f"| {job} | {value['result']} |")
+          sys.exit(0 if all(v["result"] == "success" for v in needs.values()) else 1)
+          EOF

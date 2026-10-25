@@ -1,0 +1,4 @@
+# Copy to backend.hcl and use the values printed by:
+#   terraform -chdir=bootstrap output platform_backend_config
+bucket = "legacy-api-tfstate-<account-id>-<region>"
+region = "<region>"

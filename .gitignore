@@ -41,6 +41,8 @@ id_ed25519*
 *.tfvars
 *.tfvars.json
 !*.tfvars.example
+# Committed, non-personal migration settings used by the deploy workflow
+!terraform/environments/*.tfvars
 *.tfplan
 tfplan
 crash.log

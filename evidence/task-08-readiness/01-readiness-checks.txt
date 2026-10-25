@@ -1,0 +1,30 @@
+# Task 8 readiness checks (local, 2026-10-24)
+
+## First push: which workflows trigger
+  ci.yml             triggers=['pull_request', 'push', 'workflow_call', 'workflow_dispatch']  runs-on-push-to-main=True  id-token-jobs=none
+  deploy.yml         triggers=['workflow_dispatch']  runs-on-push-to-main=False  id-token-jobs=['apply', 'plan', 'publish']
+  terraform-ci.yml   triggers=['pull_request', 'push', 'workflow_call', 'workflow_dispatch']  runs-on-push-to-main=True  id-token-jobs=none
+
+## Pinned action SHAs still resolve
+  actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 -> 3d3c42e5aac5 ok
+  actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 -> 5fda3b95a4ea ok
+  actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 -> cf430e030ddb ok
+  aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd -> e1253824e5c1 ok
+  hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e -> dfe3c3f87815 ok
+
+## actionlint 1.7.12
+  exit code: 0
+## yamllint 1.38.0 --strict
+  exit code: 0
+## shellcheck (style: setup.sh, ci/smoke-test.sh; error: legacy scripts)
+  exit code: 0
+## gitleaks: committed history
+8:09PM INF 1 commits scanned.
+8:09PM INF scanned ~286902 bytes (286.90 KB) in 455ms
+8:09PM INF no leaks found
+  exit code: 0
+## gitleaks: ALL 100 publication candidates (tracked + untracked, not ignored)
+8:09PM INF no leaks found
+  exit code: 0
+## trivy fs --scanners secret: same candidates
+  exit code: 0

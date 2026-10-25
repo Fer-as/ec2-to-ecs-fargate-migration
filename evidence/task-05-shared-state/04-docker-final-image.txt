@@ -1,0 +1,33 @@
+## A. Default image settings (STORAGE_BACKEND=memory, 1 worker): Task 4 behaviour unchanged
+$ docker run -d --name legacy-api -p 127.0.0.1:5000:5000 --read-only --cap-drop ALL --security-opt no-new-privileges:true legacy-api:local
+ffe7ea9c1920
+legacy-api healthy after 3s
+[7] [INFO] Booting worker with pid: 7
+app - INFO - Storage backend: MemoryStore
+$ curl /ready
+{"status":"ready"}
+ HTTP 200
+Failures: 0
+stopped: ExitCode=0
+
+## B. Final image in DynamoDB mode (fresh table, 2 workers)
+seed_dynamodb - INFO - Seed complete. Created: sequence, product 1, product 2, product 3. Already present (left unchanged): none
+0505473a1b11
+api-a healthy after 3s
+app - INFO - Storage backend: DynamoDBStore
+$ curl /ready
+{"status":"ready"}
+ HTTP 200
+Failures: 0
+stopped: ExitCode=0
+
+## C. Image contents
+total 32
+-rw-r--r-- 1 root root  5587 Oct 24 15:43 app.py
+-rw-r--r-- 1 root root  2394 Oct 24 15:43 seed_dynamodb.py
+-rw-r--r-- 1 root root 12999 Oct 24 15:56 storage.py
+-rw-r--r-- 1 root root   101 Jan 15  2026 wsgi.py
+credentials/env files: 0 found
+GPG_KEY=7169605F62C751356D054A26A821E680E5FA6305   <- public CPython release-signing key ID set by the official python base image (not a secret). No AWS_*/DYNAMODB_* values are baked in.
+ModuleNotFoundError: No module named 'pip'
+Env=["PATH=/opt/venv/bin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin","LANG=C.UTF-8","GPG_KEY=7169605F62C751356D054A26A821E680E5FA6305","PYTHON_VERSION=3.12.15","PYTHON_SHA256=c2c4321961fab0fb999d66e0cecf521c2ab3994c7992873ea99e306c1094fd5a","PYTHONDONTWRITEBYTECODE=1","PYTHONUNBUFFERED=1","APP_NAME=legacy-api","APP_VERSION=1.0.0","ENVIRONMENT=production","STORAGE_BACKEND=memory","WEB_CONCURRENCY=1"]

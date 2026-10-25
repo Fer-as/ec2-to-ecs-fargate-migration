@@ -2,6 +2,22 @@
 
 This is a **legacy Flask application** running on a single EC2 instance behind Nginx. It represents a typical "before" state of an application that needs to be migrated to a modern containerized platform.
 
+## Credits and scope
+
+The original application, Nginx/systemd configuration, setup scripts, legacy Terraform
+and the "before" documentation in this README and `ARCHITECTURE.md` come from the
+**CoderCo** EC2-to-ECS migration assignment (CoderCo Community learning project).
+
+Migration work added on top of the starter:
+- tests (`tests/`)
+- container image (`Dockerfile`)
+- shared DynamoDB storage (`app/storage.py`)
+- ECS Fargate platform and bootstrap Terraform (`terraform/`)
+- CI/CD and security gates (`.github/`, `ci/`)
+- runbooks (`docs/`) and verification evidence (`evidence/`)
+
+Start with [docs/aws-platform.md](docs/aws-platform.md) and [docs/ci-cd.md](docs/ci-cd.md).
+
 ## Architecture
 
 ```
@@ -28,6 +44,14 @@ The Flask API provides the following endpoints:
 - `POST /api/v1/orders` - Create a new order
 - `GET /api/v1/orders` - List all orders
 - `GET /api/v1/stats` - Application statistics
+- `GET /ready` - Readiness: `200` when storage is reachable and seeded, otherwise `503`
+
+### Storage
+
+`STORAGE_BACKEND=memory` (default) keeps the original in-process storage: one Gunicorn
+worker only, and data is lost on restart. `STORAGE_BACKEND=dynamodb` stores products,
+stock and orders in a shared DynamoDB table so EC2 and ECS can run side by side.
+See [docs/migration-state-runbook.md](docs/migration-state-runbook.md).
 
 ## Prerequisites
 
@@ -37,6 +61,11 @@ The Flask API provides the following endpoints:
 - **SSH Key Pair** created in AWS (optional, for SSH access)
 
 ## Deployment
+
+> **Note:** these are the original single-EC2 steps. The Terraform root now uses a
+> remote S3 backend created by `terraform/bootstrap`, so a plain `terraform init` asks
+> for backend settings. Follow [docs/ci-cd.md](docs/ci-cd.md) section 7 for the current,
+> approval-gated deployment order.
 
 ### 1. Configure Terraform Variables
 

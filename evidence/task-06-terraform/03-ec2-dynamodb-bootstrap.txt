@@ -1,0 +1,46 @@
+# Legacy EC2 bootstrap in DynamoDB mode - Ubuntu 24.04 container, DynamoDB Local 3.3.1 (no AWS)
+# Inputs: real rendered user data from terraform/templates/user_data.sh.tftpl (storage_backend="dynamodb")
+#         and the real app bundle built by data.archive_file.app (allowlist).
+# Stubs (test only): `aws s3 cp` copies the local bundle; `systemctl` starts Gunicorn from the
+# installed unit file, including EnvironmentFile; the env file gets DYNAMODB_ENDPOINT_URL and
+# dummy credentials appended (in AWS: no endpoint, credentials from the instance role).
+
+Bundle files: app/app.py app/requirements.txt app/seed_dynamodb.py app/storage.py app/wsgi.py
+              nginx/default.conf scripts/setup.sh scripts/test-api.sh scripts/validate-setup.sh systemd/app.service
+
+## 1. Table exists but NOT seeded -> bootstrap fails at /ready (as intended)
+Waiting for /ready (storage backend reachable and initialised)...
+ERROR: /ready did not return 200 - check /etc/flask-app/flask-app.env, the instance role and the seed step
+[user-data] ERROR: failed at line 44 (exit code 1)
+user-data exit code: 1
+
+## 2. Seeded once (seed_dynamodb.py), then bootstrap in DynamoDB mode
+seed_dynamodb - INFO - Seed complete. Created: sequence, product 1, product 2, product 3. Already present (left unchanged): none
+[systemctl stub] loaded EnvironmentFile /etc/flask-app/flask-app.env
+Waiting for Gunicorn to answer on 127.0.0.1:5000...
+Waiting for Nginx to proxy requests on port 80...
+Waiting for /ready (storage backend reachable and initialised)...
+Setup completed successfully!
+user-data exit code: 0
+/etc/flask-app/flask-app.env (lines written by the Terraform user data):
+STORAGE_BACKEND=dynamodb
+DYNAMODB_TABLE_NAME=legacy-api-production
+AWS_REGION=us-east-1
+app log: Storage backend: DynamoDBStore
+test-api.sh through Nginx: 9/9 OK (health, products, product 1, 999 -> 404, order 201, orders, invalid product 404, missing product_id 400, stats)
+systemd-analyze verify /etc/systemd/system/flask-app.service: exit 0
+
+## 3. EC2 (Nginx :80) and an ECS-style container (legacy-api:local, read-only, cap-drop ALL) on the same table
+ec2-sim:80 (EC2 via Nginx) orders: 2 [(1, 1, 2), (2, 3, 4)]   stock: [98, 50, 71]
+api-ecs:5000 (ECS container) orders: 2 [(1, 1, 2), (2, 3, 4)]  stock: [98, 50, 71]
+order via ECS container -> {"id":3,"product_id":1,"quantity":1,"total_price":29.99,...}
+stats via EC2 afterwards -> {"total_orders":3,"total_products":3,"total_revenue":289.93,...}
+
+## 4. Regression: memory mode (default) with the updated setup.sh
+user-data exit code: 0; /ready check passed; test-api.sh 9/9 OK; setup.sh re-run exit 0;
+systemd-analyze exit 0; pip-audit of the instance venv (incl. boto3): No known vulnerabilities found
+shellcheck v0.10.0 -S style scripts/setup.sh: clean
+
+## 5. Memory-mode user data unchanged
+sha256(templatefile(..., storage_backend="memory")) = 7a7f4d624e60ff493804c70e1000161225fe15251a980dd1d002feca68e7326e
+sha256(Task 3 inline user data, same inputs)       = 7a7f4d624e60ff493804c70e1000161225fe15251a980dd1d002feca68e7326e

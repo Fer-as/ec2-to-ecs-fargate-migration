@@ -1,0 +1,44 @@
+#!/bin/bash
+set -euo pipefail
+trap 'echo "[user-data] ERROR: failed at line $LINENO (exit code $?)" | tee -a /var/log/user-data.log' ERR
+
+# Variables
+APP_DIR="/opt/flask-app"
+S3_URI="s3://${app_bucket}/app.zip"
+AWS_REGION="${aws_region}"
+
+# Install bootstrap tools (wait for the apt lock held by first-boot updates)
+export DEBIAN_FRONTEND=noninteractive
+apt-get -o DPkg::Lock::Timeout=600 update -qq
+apt-get -o DPkg::Lock::Timeout=600 install -y -qq curl unzip
+
+# Ubuntu 24.04 no longer packages awscli; use the official AWS CLI v2 installer
+if ! command -v aws >/dev/null 2>&1; then
+  curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-$(uname -m).zip" -o /tmp/awscliv2.zip
+  unzip -q -o /tmp/awscliv2.zip -d /tmp
+  /tmp/aws/install
+  rm -rf /tmp/aws /tmp/awscliv2.zip
+fi
+
+# Download and extract the application bundle
+mkdir -p "$APP_DIR"
+aws s3 cp "$S3_URI" /tmp/app.zip --region "$AWS_REGION"
+unzip -q -o /tmp/app.zip -d "$APP_DIR"
+rm -f /tmp/app.zip
+
+%{ if storage_backend == "dynamodb" ~}
+# Shared DynamoDB storage, loaded by systemd from EnvironmentFile (see systemd/app.service)
+install -d -m 755 /etc/flask-app
+cat > /etc/flask-app/flask-app.env <<'ENVFILE'
+STORAGE_BACKEND=dynamodb
+DYNAMODB_TABLE_NAME=${dynamodb_table_name}
+AWS_REGION=${aws_region}
+ENVFILE
+chmod 644 /etc/flask-app/flask-app.env
+
+%{ endif ~}
+# Install and start the application (setup.sh exits non-zero if the app is not healthy)
+bash "$APP_DIR/scripts/setup.sh"
+
+# Signal completion
+echo "Application setup completed at $(date)" >> /var/log/user-data.log

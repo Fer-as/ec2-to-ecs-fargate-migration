@@ -1,0 +1,27 @@
+$ docker run -d --name legacy-api -p 127.0.0.1:5000:5000 legacy-api:local
+04b05f6368cd
+
+# Docker health status (polled every 1s via docker inspect)
+t+1s health=starting
+t+2s health=starting
+t+3s health=healthy
+
+$ docker ps --filter name=legacy-api --format "{{.Names}}  {{.Image}}  {{.Status}}  {{.Ports}}"
+legacy-api  legacy-api:local  Up 3 seconds (healthy)  127.0.0.1:5000->5000/tcp
+
+$ docker inspect --format "{{json .State.Health}}" legacy-api
+{
+    "Status": "healthy",
+    "FailingStreak": 0,
+    "Log": [
+        {
+            "Start": "2026-10-24T15:06:25.741190836Z",
+            "End": "2026-10-24T15:06:26.042846089Z",
+            "ExitCode": 0,
+            "Output": ""
+        }
+    ]
+}
+
+$ docker inspect --format "{{json .Config.Healthcheck}}" legacy-api
+{"Test":["CMD","python","-c","import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:5000/health', timeout=4).status == 200 else 1)"],"Interval":30000000000,"Timeout":5000000000,"StartPeriod":15000000000,"StartInterval":2000000000,"Retries":3}

@@ -1,0 +1,23 @@
+# Terraform files. Note: .terraform.lock.hcl IS committed (pins provider checksums).
+.terraform/
+terraform.tfstate
+terraform.tfstate.*
+*.tfstate
+*.tfstate.*
+.terraform.tfstate.lock.info
+
+# Variable files may contain secrets or personal IPs; only the example is committed
+*.tfvars
+*.tfvars.json
+!terraform.tfvars.example
+
+# Saved plans can contain sensitive values
+*.tfplan
+tfplan
+
+# Archive files
+app.zip
+
+# Crash log files
+crash.log
+crash.*.log

@@ -1,0 +1,23 @@
+# Allowlist build context: ignore everything, then add back only what the
+# Dockerfile needs. Anything not listed (.git, venv, .env, keys, Terraform
+# state/plans/providers, docs, evidence, archives, caches) never reaches the
+# Docker daemon.
+*
+
+# Runtime image
+!app/app.py
+!app/wsgi.py
+!app/requirements.txt
+
+# Test stage only (not copied into the runtime image)
+!requirements-dev.txt
+!pytest.ini
+!tests/*.py
+
+# Defence in depth, in case an allowed folder ever gains these files
+**/__pycache__
+**/*.py[cod]
+**/.env
+**/.env.*
+**/*.pem
+**/*.key

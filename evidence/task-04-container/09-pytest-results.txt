@@ -1,0 +1,108 @@
+$ docker build --target test -t legacy-api:test .
+$ docker run --rm legacy-api:test
+# (test stage = same pinned base image, same Python and same installed dependencies as the runtime image, plus pytest)
+============================= test session starts ==============================
+platform linux -- Python 3.12.15, pytest-9.1.1, pluggy-1.7.0 -- /opt/venv/bin/python
+rootdir: /src
+configfile: pytest.ini
+testpaths: tests
+collecting ... collected 58 items
+
+tests/test_api_contract.py::test_health PASSED                           [  1%]
+tests/test_api_contract.py::test_list_products PASSED                    [  3%]
+tests/test_api_contract.py::test_get_product_1 PASSED                    [  5%]
+tests/test_api_contract.py::test_get_missing_product_returns_404 PASSED  [  6%]
+tests/test_api_contract.py::test_list_orders_starts_empty PASSED         [  8%]
+tests/test_api_contract.py::test_create_order_valid PASSED               [ 10%]
+tests/test_api_contract.py::test_order_ids_increment PASSED              [ 12%]
+tests/test_api_contract.py::test_quantity_defaults_to_1 PASSED           [ 13%]
+tests/test_api_contract.py::test_order_for_entire_stock_is_allowed PASSED [ 15%]
+tests/test_api_contract.py::test_create_order_missing_product_id PASSED  [ 17%]
+tests/test_api_contract.py::test_create_order_empty_json_body PASSED     [ 18%]
+tests/test_api_contract.py::test_create_order_malformed_json PASSED      [ 20%]
+tests/test_api_contract.py::test_create_order_invalid_product PASSED     [ 22%]
+tests/test_api_contract.py::test_create_order_insufficient_stock PASSED  [ 24%]
+tests/test_api_contract.py::test_stats_initial PASSED                    [ 25%]
+tests/test_api_contract.py::test_stats_after_orders PASSED               [ 27%]
+tests/test_api_contract.py::test_unknown_endpoint_returns_json_404[/] PASSED [ 29%]
+tests/test_api_contract.py::test_unknown_endpoint_returns_json_404[/does-not-exist] PASSED [ 31%]
+tests/test_api_contract.py::test_unknown_endpoint_returns_json_404[/api/v1/products/abc] PASSED [ 32%]
+tests/test_api_contract.py::test_unknown_endpoint_returns_json_404[/api/v2/products] PASSED [ 34%]
+tests/test_gunicorn_workers.py::test_workers_share_order_ids XFAIL (...) [ 36%]
+tests/test_gunicorn_workers.py::test_workers_share_inventory XFAIL (...) [ 37%]
+tests/test_input_validation.py::test_negative_quantity_is_rejected PASSED [ 39%]
+tests/test_input_validation.py::test_zero_quantity_is_rejected PASSED    [ 41%]
+tests/test_input_validation.py::test_wrong_quantity_type_is_rejected_with_400[abc] PASSED [ 43%]
+tests/test_input_validation.py::test_wrong_quantity_type_is_rejected_with_400[2] PASSED [ 44%]
+tests/test_input_validation.py::test_wrong_quantity_type_is_rejected_with_400[None] PASSED [ 46%]
+tests/test_input_validation.py::test_wrong_quantity_type_is_rejected_with_400[quantity3] PASSED [ 48%]
+tests/test_input_validation.py::test_invalid_quantity_returns_400_without_side_effects[-5] PASSED [ 50%]
+tests/test_input_validation.py::test_invalid_quantity_returns_400_without_side_effects[0] PASSED [ 51%]
+tests/test_input_validation.py::test_invalid_quantity_returns_400_without_side_effects[abc] PASSED [ 53%]
+tests/test_input_validation.py::test_invalid_quantity_returns_400_without_side_effects[2] PASSED [ 55%]
+tests/test_input_validation.py::test_invalid_quantity_returns_400_without_side_effects[None] PASSED [ 56%]
+tests/test_input_validation.py::test_invalid_quantity_returns_400_without_side_effects[quantity5] PASSED [ 58%]
+tests/test_input_validation.py::test_invalid_quantity_returns_400_without_side_effects[quantity6] PASSED [ 60%]
+tests/test_input_validation.py::test_invalid_quantity_returns_400_without_side_effects[1.5] PASSED [ 62%]
+tests/test_input_validation.py::test_invalid_quantity_returns_400_without_side_effects[True] PASSED [ 63%]
+tests/test_input_validation.py::test_invalid_quantity_returns_400_without_side_effects[False] PASSED [ 65%]
+tests/test_input_validation.py::test_invalid_product_id_type_returns_400[1] PASSED [ 67%]
+tests/test_input_validation.py::test_invalid_product_id_type_returns_400[1.0] PASSED [ 68%]
+tests/test_input_validation.py::test_invalid_product_id_type_returns_400[product_id2] PASSED [ 70%]
+tests/test_input_validation.py::test_invalid_product_id_type_returns_400[product_id3] PASSED [ 72%]
+tests/test_input_validation.py::test_invalid_product_id_type_returns_400[True] PASSED [ 74%]
+tests/test_input_validation.py::test_non_object_json_body_returns_400[body0] PASSED [ 75%]
+tests/test_input_validation.py::test_non_object_json_body_returns_400[text] PASSED [ 77%]
+tests/test_input_validation.py::test_non_object_json_body_returns_400[42] PASSED [ 79%]
+tests/test_input_validation.py::test_undecodable_json_returns_400[{bad] PASSED [ 81%]
+tests/test_input_validation.py::test_undecodable_json_returns_400[] PASSED [ 82%]
+tests/test_input_validation.py::test_undecodable_json_returns_400[\xff] PASSED [ 84%]
+tests/test_input_validation.py::test_non_json_content_type_returns_415[text/plain] PASSED [ 86%]
+tests/test_input_validation.py::test_non_json_content_type_returns_415[None] PASSED [ 87%]
+tests/test_input_validation.py::test_invalid_quantity_on_unknown_product_is_a_400 PASSED [ 89%]
+tests/test_input_validation.py::test_valid_large_quantity_still_reports_insufficient_stock PASSED [ 91%]
+tests/test_input_validation.py::test_wrong_method_returns_json_405_with_allow_header[delete-/api/v1/products/1-allowed0] PASSED [ 93%]
+tests/test_input_validation.py::test_wrong_method_returns_json_405_with_allow_header[post-/api/v1/products-allowed1] PASSED [ 94%]
+tests/test_input_validation.py::test_wrong_method_returns_json_405_with_allow_header[put-/api/v1/orders-allowed2] PASSED [ 96%]
+tests/test_input_validation.py::test_wrong_method_returns_json_405_with_allow_header[post-/health-allowed3] PASSED [ 98%]
+tests/test_input_validation.py::test_wrong_method_returns_json_405_with_allow_header[delete-/api/v1/stats-allowed4] PASSED [100%]
+
+=============================== warnings summary ===============================
+tests/test_api_contract.py::test_health
+  /src/app/app.py:48: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "timestamp": datetime.utcnow().isoformat(),
+
+tests/test_api_contract.py::test_create_order_valid
+tests/test_api_contract.py::test_order_ids_increment
+tests/test_api_contract.py::test_order_ids_increment
+tests/test_api_contract.py::test_quantity_defaults_to_1
+tests/test_api_contract.py::test_order_for_entire_stock_is_allowed
+tests/test_api_contract.py::test_stats_after_orders
+tests/test_api_contract.py::test_stats_after_orders
+  /src/app/app.py:121: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "created_at": datetime.utcnow().isoformat()
+
+tests/test_api_contract.py::test_stats_initial
+tests/test_api_contract.py::test_stats_after_orders
+  /src/app/app.py:147: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "timestamp": datetime.utcnow().isoformat()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+XFAIL tests/test_gunicorn_workers.py::test_workers_share_order_ids - Each Gunicorn worker has its own order counter; workers hand out duplicate order IDs
+XFAIL tests/test_gunicorn_workers.py::test_workers_share_inventory - Each Gunicorn worker has its own inventory; stock differs between workers
+================== 56 passed, 2 xfailed, 10 warnings in 2.17s ==================
+exit code: 0
+
+# Known Gunicorn state defects shown as real failures (xfail disabled):
+$ docker run --rm legacy-api:test python -m pytest tests/test_gunicorn_workers.py --runxfail -q -p no:cacheprovider
+E       AssertionError: worker B created order id 1, worker A then created order id 1 (duplicate)
+E       AssertionError: worker B sold 5 units, but worker A still reports stock 100
+2 failed in 1.99s
+
+# Same suite on the Windows developer machine (Gunicorn tests skip: Gunicorn cannot run on Windows)
+$ venv\Scripts\python -m pytest -q
+=========================== short test summary info ===========================
+SKIPPED [1] tests\test_gunicorn_workers.py:112: Gunicorn cannot run on Windows; runs on Linux/CI
+SKIPPED [1] tests\test_gunicorn_workers.py:131: Gunicorn cannot run on Windows; runs on Linux/CI
+56 passed, 2 skipped, 10 warnings in 0.16s

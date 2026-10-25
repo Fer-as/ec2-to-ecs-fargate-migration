@@ -1,0 +1,24 @@
+# Reproducibility: second independent build with --no-cache, compared with legacy-api:local
+$ docker build --no-cache -t legacy-api:rebuild .
+
+## Layer diff IDs (local vs rebuild)
+layer 1  sha256:a70f6272827f64e1  sha256:a70f6272827f64e1  identical
+layer 2  sha256:33d3a946838548b1  sha256:33d3a946838548b1  identical
+layer 3  sha256:500ecb68a701ad04  sha256:500ecb68a701ad04  identical
+layer 4  sha256:93881a54803b57e0  sha256:93881a54803b57e0  identical
+layer 5  sha256:ee3087983d381122  sha256:5904b3ace28114b7  DIFFERENT
+layer 6  sha256:d95f0b135065ec5c  sha256:b72f8611398e8284  DIFFERENT
+layer 7  sha256:420b3870c33cbcb9  sha256:b0f2c24753d03a5d  DIFFERENT
+layer 8  sha256:c7bfa95890446eef  sha256:81aef7bf14fd539a  DIFFERENT
+
+## Runtime configuration (Cmd, Env, User, ExposedPorts, Healthcheck)
+local config hash: 31f9a7fc8437cffe
+rebuild config hash: 31f9a7fc8437cffe
+
+## File contents of /opt/venv and /app (sha256 of every file; .pyc listed separately)
+local: non-.pyc content hash 1bae91bc9136a346, .pyc count 199, .pyc content hash 327c9e41d2588e57
+rebuild: non-.pyc content hash 1bae91bc9136a346, .pyc count 199, .pyc content hash c7a068b22c7ffb91
+
+## Installed packages
+local: Flask==3.1.3 Jinja2==3.1.6 MarkupSafe==3.0.4 Werkzeug==3.1.9 blinker==1.9.0 click==8.5.0 gunicorn==26.2.0 itsdangerous==2.2.0
+rebuild: Flask==3.1.3 Jinja2==3.1.6 MarkupSafe==3.0.4 Werkzeug==3.1.9 blinker==1.9.0 click==8.5.0 gunicorn==26.2.0 itsdangerous==2.2.0

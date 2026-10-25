@@ -1,0 +1,42 @@
+[Unit]
+Description=Legacy Flask Application (Gunicorn)
+After=network.target
+
+[Service]
+Type=notify
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/flask-app/app
+Environment="PATH=/opt/flask-app/venv/bin"
+Environment="APP_NAME=legacy-api"
+Environment="APP_VERSION=1.0.0"
+Environment="ENVIRONMENT=production"
+ExecStart=/opt/flask-app/venv/bin/gunicorn \
+    --bind 127.0.0.1:5000 \
+    --workers 4 \
+    --worker-class sync \
+    --worker-connections 1000 \
+    --timeout 60 \
+    --graceful-timeout 30 \
+    --max-requests 1000 \
+    --max-requests-jitter 100 \
+    --log-level info \
+    --access-logfile /var/log/flask-app/access.log \
+    --error-logfile /var/log/flask-app/error.log \
+    wsgi:app
+ExecReload=/bin/kill -s HUP $MAINPID
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=flask-app
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log/flask-app
+
+[Install]
+WantedBy=multi-user.target

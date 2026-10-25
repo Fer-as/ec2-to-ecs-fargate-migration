@@ -1,0 +1,20 @@
+Trivy 0.75.0 summary for legacy-api:local (generated from trivy --format json, same scan as 08-trivy-scan.txt)
+Scan time (UTC): 2026-10-24T15:10:25
+
+Findings (package x CVE): 164   by target type: {'debian': 164}
+Unique CVE IDs by severity: {'CRITICAL': 0, 'HIGH': 8, 'MEDIUM': 29, 'LOW': 33, 'UNKNOWN': 1}
+Secrets found: 0
+Status: {'affected': 162, 'fix_deferred': 2}
+Findings with a fixed version available: 0
+
+HIGH CVEs (all in Debian base OS packages; none fixed upstream yet):
+  CVE-2025-69720: libncursesw6 6.5+20250216-2 [affected], libtinfo6 6.5+20250216-2 [affected], ncurses-base 6.5+20250216-2 [affected], ncurses-bin 6.5+20250216-2 [affected]
+  CVE-2026-16742: libsystemd0 257.13-1~deb13u1 [affected], libudev1 257.13-1~deb13u1 [affected]
+  CVE-2026-54369: libacl1 2.3.2-2+b1 [affected]
+  CVE-2026-76642: bsdutils 1:2.41.5-0+deb13u1 [affected], libblkid1 2.41.5-0+deb13u1 [affected], liblastlog2-2 2.41.5-0+deb13u1 [affected], libmount1 2.41.5-0+deb13u1 [affected], libsmartcols1 2.41.5-0+deb13u1 [affected], libuuid1 2.41.5-0+deb13u1 [affected], login 1:4.16.0-2+really2.41.5-0+deb13u1 [affected], mount 2.41.5-0+deb13u1 [affected], util-linux 2.41.5-0+deb13u1 [affected]
+  CVE-2026-78408: bsdutils 1:2.41.5-0+deb13u1 [affected], libblkid1 2.41.5-0+deb13u1 [affected], liblastlog2-2 2.41.5-0+deb13u1 [affected], libmount1 2.41.5-0+deb13u1 [affected], libsmartcols1 2.41.5-0+deb13u1 [affected], libuuid1 2.41.5-0+deb13u1 [affected], login 1:4.16.0-2+really2.41.5-0+deb13u1 [affected], mount 2.41.5-0+deb13u1 [affected], util-linux 2.41.5-0+deb13u1 [affected]
+  CVE-2026-78409: bsdutils 1:2.41.5-0+deb13u1 [affected], libblkid1 2.41.5-0+deb13u1 [affected], liblastlog2-2 2.41.5-0+deb13u1 [affected], libmount1 2.41.5-0+deb13u1 [affected], libsmartcols1 2.41.5-0+deb13u1 [affected], libuuid1 2.41.5-0+deb13u1 [affected], login 1:4.16.0-2+really2.41.5-0+deb13u1 [affected], mount 2.41.5-0+deb13u1 [affected], util-linux 2.41.5-0+deb13u1 [affected]
+  CVE-2026-78410: bsdutils 1:2.41.5-0+deb13u1 [affected], libblkid1 2.41.5-0+deb13u1 [affected], liblastlog2-2 2.41.5-0+deb13u1 [affected], libmount1 2.41.5-0+deb13u1 [affected], libsmartcols1 2.41.5-0+deb13u1 [affected], libuuid1 2.41.5-0+deb13u1 [affected], login 1:4.16.0-2+really2.41.5-0+deb13u1 [affected], mount 2.41.5-0+deb13u1 [affected], util-linux 2.41.5-0+deb13u1 [affected]
+  CVE-2026-9538: perl-base 5.40.1-6+deb13u1 [fix_deferred]
+
+Python packages (python-pkg targets): 0 vulnerabilities

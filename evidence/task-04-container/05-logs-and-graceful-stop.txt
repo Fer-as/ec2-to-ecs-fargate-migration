@@ -1,0 +1,41 @@
+# stdout only (Gunicorn access log):
+$ docker logs legacy-api 2>/dev/null
+172.17.0.1 - - [24/Oct/2026:15:06:39 +0000] "POST /api/v1/orders HTTP/1.1" 400 65 "-" "curl/8.18.0"
+172.17.0.1 - - [24/Oct/2026:15:06:40 +0000] "POST /api/v1/orders HTTP/1.1" 400 65 "-" "curl/8.18.0"
+172.17.0.1 - - [24/Oct/2026:15:06:41 +0000] "POST /api/v1/orders HTTP/1.1" 400 65 "-" "curl/8.18.0"
+172.17.0.1 - - [24/Oct/2026:15:06:42 +0000] "POST /api/v1/orders HTTP/1.1" 400 52 "-" "curl/8.18.0"
+172.17.0.1 - - [24/Oct/2026:15:06:44 +0000] "GET /does-not-exist HTTP/1.1" 404 22 "-" "curl/8.18.0"
+172.17.0.1 - - [24/Oct/2026:15:06:45 +0000] "GET / HTTP/1.1" 404 22 "-" "curl/8.18.0"
+172.17.0.1 - - [24/Oct/2026:15:06:46 +0000] "DELETE /api/v1/products/1 HTTP/1.1" 405 31 "-" "curl/8.18.0"
+172.17.0.1 - - [24/Oct/2026:15:06:47 +0000] "GET /api/v1/stats HTTP/1.1" 200 101 "-" "curl/8.18.0"
+
+# stderr only (Gunicorn error log + Flask app log):
+$ docker logs legacy-api 2>&1 >/dev/null
+[2026-10-24 15:06:24 +0000] [1] [INFO] Starting gunicorn 26.2.0
+[2026-10-24 15:06:24 +0000] [1] [INFO] Listening at: http://0.0.0.0:5000 (1)
+[2026-10-24 15:06:24 +0000] [1] [INFO] Using worker: sync
+[2026-10-24 15:06:24 +0000] [7] [INFO] Booting worker with pid: 7
+2026-10-24 15:06:29,816 - app - INFO - GET /api/v1/products
+2026-10-24 15:06:31,010 - app - INFO - GET /api/v1/products/1
+2026-10-24 15:06:32,220 - app - INFO - GET /api/v1/products/999
+2026-10-24 15:06:33,426 - app - INFO - GET /api/v1/orders
+2026-10-24 15:06:34,581 - app - INFO - POST /api/v1/orders
+2026-10-24 15:06:34,581 - app - INFO - Order created: 1
+2026-10-24 15:06:35,764 - app - INFO - GET /api/v1/orders
+2026-10-24 15:06:36,892 - app - INFO - GET /api/v1/products/1
+
+# graceful stop
+$ time docker stop --time 30 legacy-api
+Flag --time has been deprecated, use --timeout instead
+legacy-api
+stop took 0.84s
+$ docker inspect -f "ExitCode={{.State.ExitCode}} OOMKilled={{.State.OOMKilled}} Status={{.State.Status}}" legacy-api
+ExitCode=0 OOMKilled=false Status=exited
+
+# shutdown log lines (last 6 lines of stderr):
+2026-10-24 15:06:41,516 - app - INFO - POST /api/v1/orders
+2026-10-24 15:06:42,965 - app - INFO - POST /api/v1/orders
+2026-10-24 15:06:47,652 - app - INFO - GET /api/v1/stats
+[2026-10-24 15:06:51 +0000] [1] [INFO] Handling signal: term
+[2026-10-24 15:06:51 +0000] [7] [INFO] Worker exiting (pid: 7)
+[2026-10-24 15:06:51 +0000] [1] [INFO] Shutting down: Master

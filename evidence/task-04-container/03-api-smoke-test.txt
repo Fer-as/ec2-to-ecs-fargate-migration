@@ -1,0 +1,21 @@
+$ bash evidence/task-04-container/smoke-test.sh http://127.0.0.1:5000
+Smoke test against http://127.0.0.1:5000
+PASS  GET /health -> HTTP 200 {"environment":"production","service":"legacy-api","status":"healthy","timestamp":"2026-10-24T15:06:28.634825","version":"1.0.0"}
+PASS  GET /api/v1/products -> HTTP 200 {"count":3,"products":[{"id":1,"name":"Widget A","price":29.99,"stock":100},{"id":2,"name":"Widget B","price":39.99,"stock":50},{"id":3,"name":"Widget C","price":49.99,"stock":75}]}
+PASS  GET /api/v1/products/1 -> HTTP 200 {"id":1,"name":"Widget A","price":29.99,"stock":100}
+PASS  GET /api/v1/products/999 -> HTTP 404 {"error":"Product not found"}
+PASS  GET /api/v1/orders (empty) -> HTTP 200 {"count":0,"orders":[]}
+PASS  POST /api/v1/orders (valid) -> HTTP 201 {"created_at":"2026-10-24T15:06:34.581889","id":1,"product_id":1,"product_name":"Widget A","quantity":2,"total_price":59.98}
+PASS  GET /api/v1/orders (has order) -> HTTP 200 {"count":1,"orders":[{"created_at":"2026-10-24T15:06:34.581889","id":1,"product_id":1,"product_name":"Widget A","quantity":2,"total_price":59.98}]}
+PASS  GET /api/v1/products/1 (stock 98) -> HTTP 200 {"id":1,"name":"Widget A","price":29.99,"stock":98}
+PASS  GET /api/v1/stats -> HTTP 200 {"timestamp":"2026-10-24T15:06:38.023391","total_orders":1,"total_products":3,"total_revenue":59.98}
+PASS  POST quantity -1 -> HTTP 400 {"error":"400 Bad Request: quantity must be a positive integer"}
+PASS  POST quantity 0 -> HTTP 400 {"error":"400 Bad Request: quantity must be a positive integer"}
+PASS  POST quantity "abc" -> HTTP 400 {"error":"400 Bad Request: quantity must be a positive integer"}
+PASS  POST missing product_id -> HTTP 400 {"error":"400 Bad Request: product_id is required"}
+PASS  GET /does-not-exist -> HTTP 404 {"error":"Not found"}
+PASS  GET / -> HTTP 404 {"error":"Not found"}
+PASS  DELETE /api/v1/products/1 -> HTTP 405 {"error":"Method not allowed"}
+PASS  GET /api/v1/stats (invalid orders not counted) -> HTTP 200 {"timestamp":"2026-10-24T15:06:47.652320","total_orders":1,"total_products":3,"total_revenue":59.98}
+Failures: 0
+exit code: 0

@@ -1,0 +1,30 @@
+ARCHITECTURE.md:104: trailing whitespace.
+[32m+[m[41m  [m
+ARCHITECTURE.md:129: trailing whitespace.
+[32m+[m[32m   EC2 Boot → User-Data Script → Download App from S3 → Extract →[m[41m [m
+ARCHITECTURE.md:130: trailing whitespace.
+[32m+[m[32m   Setup Python Env → Install Dependencies → Configure Systemd →[m[41m [m
+ARCHITECTURE.md:136: trailing whitespace.
+[32m+[m[32m   Terraform Apply → Create S3 Bucket → Upload App Zip →[m[41m [m
+app/app.py:90: trailing whitespace.
+[32m+[m[41m    [m
+app/app.py:111: trailing whitespace.
+[32m+[m[41m        [m
+app/app.py:114: trailing whitespace.
+[32m+[m[41m        [m
+app/app.py:123: trailing whitespace.
+[32m+[m[41m        [m
+app/app.py:127: trailing whitespace.
+[32m+[m[41m        [m
+app/app.py:130: trailing whitespace.
+[32m+[m[41m        [m
+scripts/test-api.sh:25: trailing whitespace.
+[32m+[m[41m    [m
+scripts/test-api.sh:27: trailing whitespace.
+[32m+[m[41m    [m
+scripts/test-api.sh:36: trailing whitespace.
+[32m+[m[41m    [m
+scripts/test-api.sh:39: trailing whitespace.
+[32m+[m[41m    [m
+scripts/validate-setup.sh:15: trailing whitespace.
+[32m+[m[32mif [ "$EUID" -ne 0 ]; then[m[41m [m

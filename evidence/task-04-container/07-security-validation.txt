@@ -1,0 +1,65 @@
+## 1. Hardened run: read-only root filesystem, ALL capabilities dropped, no-new-privileges, not privileged, no Docker socket
+$ docker run -d --name legacy-api-hardened -p 127.0.0.1:5000:5000 --read-only --cap-drop ALL --security-opt no-new-privileges:true --pids-limit 100 --memory 256m legacy-api:local
+9582d3b0a785
+healthy after 3s
+Privileged=false ReadonlyRootfs=true CapDrop=[ALL] CapAdd=[] SecurityOpt=[no-new-privileges:true] Mounts=0
+CapPrm:	0000000000000000
+CapEff:	0000000000000000
+CapBnd:	0000000000000000
+NoNewPrivs:	1
+$ docker exec legacy-api-hardened ls -l /var/run/docker.sock
+ls: cannot access '/var/run/docker.sock': No such file or directory
+$ docker exec legacy-api-hardened touch /tmp/x   (root filesystem is read-only)
+touch: cannot touch '/tmp/x': Read-only file system
+exit code: 1
+
+$ smoke-test.sh against the hardened container
+PASS  DELETE /api/v1/products/1 -> HTTP 405 {"error":"Method not allowed"}
+PASS  GET /api/v1/stats (invalid orders not counted) -> HTTP 200 {"timestamp":"2026-10-24T15:07:52.638760","total_orders":1,"total_products":3,"total_revenue":59.98}
+Failures: 0
+
+$ docker logs legacy-api-hardened 2>&1 | grep -i -E "error|warn|denied|read-only" || echo "no errors or warnings in logs"
+no errors or warnings in logs
+stopped: ExitCode=0
+
+## 2. Image contents: secrets, Git, Terraform, tests, build tools
+$ ls -la /app
+total 20
+drwxr-xr-x 1 root root 4096 Oct 24 15:05 .
+drwxr-xr-x 1 root root 4096 Oct 24 15:08 ..
+-rw-r--r-- 1 root root 5186 Oct 24 14:33 app.py
+-rw-r--r-- 1 root root  101 Jan 15  2026 wsgi.py
+
+$ find / -xdev for secrets/repo artefacts (.env*, *.pem, *.key, id_rsa*, id_ed25519*, .git, *.tfstate*, .terraform*, *.tfvars, *.tfplan, credentials, .aws, tests, requirements-dev.txt, pytest.ini)
+  (public CA bundles from the ca-certificates package are excluded: /etc/ssl/certs, /usr/share/ca-certificates, /usr/lib/ssl/cert.pem)
+  result: nothing found
+
+$ which pip pip3 gcc make git curl wget
+pip    not-present
+pip3   not-present
+gcc    not-present
+make   not-present
+git    not-present
+curl   not-present
+wget   not-present
+
+$ python -c "import pip"
+ModuleNotFoundError: No module named 'pip'
+
+$ find / -xdev -perm /6000 -type f   (setuid/setgid binaries inherited from the Debian base image. They cannot raise privileges when the container runs with no-new-privileges, as in section 1; root and app accounts have no usable password: /etc/shadow shows root:* and app:!)
+/usr/bin/chage /usr/bin/chfn /usr/bin/chsh /usr/bin/expiry /usr/bin/gpasswd /usr/bin/mount /usr/bin/newgrp /usr/bin/passwd /usr/bin/su /usr/bin/umount /usr/sbin/unix_chkpwd 
+
+## 3. Installed Python packages in /opt/venv vs app/requirements.txt
+$ docker run --rm --entrypoint python legacy-api:local -c "<list importlib.metadata distributions>"
+blinker==1.9.0
+click==8.5.0
+Flask==3.1.3
+gunicorn==26.2.0
+itsdangerous==2.2.0
+Jinja2==3.1.6
+MarkupSafe==3.0.4
+Werkzeug==3.1.9
+--- app/requirements.txt (direct pins; the other 5 are their transitive dependencies):
+Flask==3.1.3
+gunicorn==26.2.0
+werkzeug==3.1.9

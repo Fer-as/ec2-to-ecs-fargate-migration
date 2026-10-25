@@ -1,0 +1,25 @@
+$ docker exec legacy-api id
+uid=10001(app) gid=10001(app) groups=10001(app)
+
+$ docker top legacy-api -o user,uid,pid,ppid,args   (processes as seen from the Docker host)
+USER                UID                 PID                 PPID                COMMAND
+10001               10001               2471                2447                /opt/venv/bin/python /opt/venv/bin/gunicorn --bind 0.0.0.0:5000 --workers 1 --worker-class sync --timeout 60 --graceful-timeout 25 --worker-tmp-dir /dev/shm --no-control-socket --log-level info --access-logfile - --error-logfile - wsgi:app
+10001               10001               2494                2471                /opt/venv/bin/python /opt/venv/bin/gunicorn --bind 0.0.0.0:5000 --workers 1 --worker-class sync --timeout 60 --graceful-timeout 25 --worker-tmp-dir /dev/shm --no-control-socket --log-level info --access-logfile - --error-logfile - wsgi:app
+
+$ docker exec legacy-api sh -c 'grep -E "^(Uid|Gid|CapEff)" /proc/1/status; echo "PID1: $(tr "\0" " " </proc/1/cmdline)"'
+Uid:	10001	10001	10001	10001
+Gid:	10001	10001	10001	10001
+CapEff:	0000000000000000
+PID1: /opt/venv/bin/python /opt/venv/bin/gunicorn --bind 0.0.0.0:5000 --workers 1 --worker-class sync --timeout 60 --graceful-timeout 25 --worker-tmp-dir /dev/shm --no-control-socket --log-level info --access-logfile - --error-logfile - wsgi:app 
+
+$ docker image inspect legacy-api:local --format "User={{.Config.User}} WorkingDir={{.Config.WorkingDir}} ExposedPorts={{.Config.ExposedPorts}}"
+User=10001:10001 WorkingDir=/app ExposedPorts=map[5000/tcp:{}]
+
+$ docker exec legacy-api touch /app/x   (app code must not be writable by the app user)
+touch: cannot touch '/app/x': Permission denied
+exit code: 1
+
+$ docker exec legacy-api ls -ln /app
+total 12
+-rw-r--r-- 1 0 0 5186 Oct 24 14:33 app.py
+-rw-r--r-- 1 0 0  101 Jan 15  2026 wsgi.py

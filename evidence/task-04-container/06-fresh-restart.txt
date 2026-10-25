@@ -1,0 +1,14 @@
+$ docker rm legacy-api && docker run -d --name legacy-api -p 127.0.0.1:5000:5000 legacy-api:local
+bfef7d6f0b7e
+t+1s health=starting
+t+2s health=starting
+t+3s health=healthy
+legacy-api  Up 3 seconds (healthy)
+
+# Data from the previous container is gone (expected: in-memory storage):
+$ curl -s http://127.0.0.1:5000/api/v1/orders
+{"count":0,"orders":[]}
+
+$ curl -s http://127.0.0.1:5000/api/v1/products/1
+{"id":1,"name":"Widget A","price":29.99,"stock":100}
+

@@ -1,0 +1,44 @@
+# HARMLESS test of the GitHub Environment approval gate (no AWS, no Terraform, no secrets).
+#
+# Purpose: prove at runtime that a job using `environment: production` waits for a
+# required reviewer, that "Reject" stops it, that "Approve and deploy" lets it run, and
+# that a non-main branch cannot deploy to production. Procedure: docs/approval-gate-test.md
+#
+# It requests no OIDC token (no id-token permission), so it can never assume an AWS role.
+# It reads no secrets or variables, builds and pushes nothing, and writes nowhere.
+# ci/tests/test_workflow_privileges.py enforces all of this.
+name: Approval gate test (harmless, no AWS)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: approval-gate-test
+  cancel-in-progress: false
+
+jobs:
+  approval:
+    name: Waits for production approval, then prints a message
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment:
+      name: production
+    permissions:
+      contents: read
+    steps:
+      # Not a job-level `if`: on another branch the environment's own deployment-branch
+      # rule must refuse the job before it starts (Test 3). This guard is a second layer.
+      - name: Only main may use the production environment
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::approval gate test must run from refs/heads/main (got $GITHUB_REF)"
+          exit 1
+
+      - name: Harmless command (runs only after a reviewer approved this job)
+        run: |
+          echo "APPROVAL GATE TEST: this step ran after a required reviewer approved the job."
+          echo "run_id=${GITHUB_RUN_ID} attempt=${GITHUB_RUN_ATTEMPT} ref=${GITHUB_REF} sha=${GITHUB_SHA}"
+          echo "triggered_by=${GITHUB_TRIGGERING_ACTOR} started_at=$(date -u +%FT%TZ)"

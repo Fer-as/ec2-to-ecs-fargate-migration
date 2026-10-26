@@ -1,0 +1,53 @@
+Task 16 offline validation (2026-10-26). No AWS calls, no workflow runs.
+
+== 1. pre-commit (tracked files)
+exit=0
+== 1b. pre-commit (new untracked files)
+exit=0
+== 2. actionlint 1.7.12
+exit=0
+== 3. yamllint 1.38.0 --strict (workflows)
+yamllint.................................................................Passed
+== 4. shellcheck v0.10.0
+exit=0
+== 5. pytest application suite (Windows, no DynamoDB Local)
+62 passed, 24 skipped, 13 warnings in 0.54s
+== 6. pytest ci/tests (CI helpers, IAM policy gate, workflow policy + privilege tests)
+347 passed in 0.85s
+== 6b. ruff
+ruff check...............................................................Passed
+All checks passed!
+== 7-9. terraform terraform
+fmt ok
+Success! The configuration is valid.
+Success! 18 passed, 0 failed.
+== 7-9. terraform terraform/bootstrap
+fmt ok
+Success! The configuration is valid.
+Success! 9 passed, 0 failed.
+
+== 10. Checkov 3.3.26
+Passed checks: 285, Failed checks: 0, Skipped checks: 30
+== 11. gitleaks v8.30.1 git history (all refs)
+6:10PM INF 3 commits scanned.
+6:10PM INF no leaks found
+== 11b. gitleaks working tree (incl. uncommitted Task 14/16 files)
+  .github: 6:10PM INF no leaks found
+  ci: 6:10PM INF no leaks found
+  docs: 6:10PM INF no leaks found
+  evidence: 6:10PM INF no leaks found
+  terraform: 6:10PM INF no leaks found
+  tests: 6:10PM INF no leaks found
+  app: 6:11PM INF no leaks found
+  scripts: 6:11PM INF no leaks found
+  README.md: 6:11PM INF no leaks found
+== 12. draw.io XML structure
+  ec2-to-ecs-overview.drawio diagrams 1 cells 61 vertices 47 edges 12 unique ids True dangling refs 0 compressed False
+  migration-traffic-flow.drawio diagrams 1 cells 59 vertices 37 edges 20 unique ids True dangling refs 0 compressed False
+docs/architecture/ec2-to-ecs-overview.png:    PNG image data, 1764 x 1204, 8-bit/color RGB, non-interlaced
+docs/architecture/migration-traffic-flow.png: PNG image data, 1764 x 1009, 8-bit/color RGB, non-interlaced
+== 13. Git safety
+  staged files: []
+  untracked/modified state, plan or tfvars files: []
+  ignored but present (kept private): !! terraform/bootstrap/bootstrap.tfplan !! terraform/bootstrap/terraform.tfvars 
+9dd04a4 security: harden deployment IAM and add pre-commit gates

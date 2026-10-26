@@ -1,0 +1,37 @@
+Local migration rehearsal (2026-10-26). Command: python ci/local_migration_rehearsal.py
+Docker 29.8.0, image built from the repository Dockerfile (legacy-api:rehearsal),
+DynamoDB Local 3.3.1 (same pinned digest as ci.yml). LOCAL ONLY: no ALB, no AWS, no IAM evaluation.
+
+PASS  ecs: /health 200 (process alive) before the store exists
+PASS  ecs: /ready 503 before the table is created and seeded
+PASS  ecs: /ready 200 after seeding
+PASS  ec2: /ready 200 after seeding
+PASS  order placed via ecs (201)  [order id 1]
+PASS  ec2 sees the order written by ecs
+PASS  stock identical on both (100 - 3 = 97)
+PASS  reverse direction: order via ec2 visible via ecs
+PASS  concurrent orders: no oversell (stock never negative)  [80 attempts: 50 x 201, 30 x 400 insufficient, 0 x 503 retry-later]
+PASS  concurrent orders: sold units == stock decrease  [stock 50 -> 0]
+PASS  order ids unique across processes  [52 orders]
+PASS  stats order count == orders list
+PASS  ecs restarted: every order still present
+PASS  DynamoDB unreachable: /health still 200 (ECS does not kill the task)
+PASS  DynamoDB unreachable: /ready 503 (ALB stops routing)
+PASS  DynamoDB reachable again: /ready 200
+PASS  no data lost across the outage
+PASS  rollback: ec2 serves the identical state  [(95, 0, 52)]
+PASS  rollback: writes continue on ec2
+PASS  roll forward: ecs sees the order written during rollback
+PASS  re-seed leaves stock and orders unchanged
+PASS  memory backend: does not see shared orders (separate private state)
+22 passed, 0 failed (LOCAL rehearsal; not AWS, not an ALB)
+
+Cleanup check: rehearsal containers left = 0, networks left = 0
+
+First run (kept for honesty): the outage step originally STOPPED the DynamoDB Local container; the emulator
+keeps data in memory, so the table vanished and 6 later checks failed (test-design error, not an app defect).
+The outage is now simulated with docker network disconnect/connect.
+Linux test stage with DynamoDB Local (docker build --target test; run on the rehearsal network):  84 passed, 2 xfailed, 107 warnings in 13.00s 
+
+Hardened container smoke test (CI flags: --read-only --cap-drop ALL --security-opt no-new-privileges:true):
+  docker health = healthy, image user = 10001:10001; ci/smoke-test.sh: 17 PASS, 0 failures

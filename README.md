@@ -18,6 +18,24 @@ Migration work added on top of the starter:
 
 Start with [docs/aws-platform.md](docs/aws-platform.md) and [docs/ci-cd.md](docs/ci-cd.md).
 
+## Assessor navigation
+
+Status (26 Oct 2026): implemented as code and verified locally and in GitHub Actions;
+**not yet deployed in AWS**.
+
+| Topic | Where |
+|---|---|
+| Acceptance status (what is verified, where) | [docs/acceptance-checklist.md](docs/acceptance-checklist.md) |
+| Architecture diagrams (editable draw.io + PNG) | [docs/architecture/](docs/architecture/) |
+| CI/CD, OIDC, approval | [docs/ci-cd.md](docs/ci-cd.md), [docs/approval-gate-test.md](docs/approval-gate-test.md) |
+| IAM permission matrix | [docs/iam-permission-matrix.md](docs/iam-permission-matrix.md) |
+| Migration and rollback runbook | [docs/migration-state-runbook.md](docs/migration-state-runbook.md) |
+| First AWS deployment (operator steps) | [docs/first-deployment-checklist.md](docs/first-deployment-checklist.md) |
+| Readiness review and known issues | [docs/deployment-readiness-review.md](docs/deployment-readiness-review.md) |
+| Evidence (redacted command output) | [evidence/](evidence/) |
+
+![Platform architecture](docs/architecture/ec2-to-ecs-overview.png)
+
 ## Architecture
 
 ```

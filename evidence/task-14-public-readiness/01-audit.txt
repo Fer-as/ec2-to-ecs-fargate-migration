@@ -1,0 +1,43 @@
+Task 14 - Public repository readiness audit (2026-10-26). Read-only.
+No visibility, environment, ruleset or branch-protection change. No AWS calls.
+GitHub API used read-only (gh api GET).
+
+1. CoderCo permission: BLOCKED
+   codercohq/ec2-legacy-app: public, fork=false, license=null, no LICENSE/COPYING/NOTICE in tree
+   README "License": "This is a learning project for CoderCo Community." (no grant)
+   Other CoderCo repos: MIT only on devops-learning, dotfiles, eks-assignment-v1,
+   terraform-starter-kit (not applicable). ecs-assignment / challenges READMEs: "Create your
+   own repository" / "Submit a GitHub repo" - no licence, not about this repository.
+   Fer-as/ec2-to-ecs-fargate-migration: private, fork=false, license=null.
+
+2. History audit (git rev-list --all: 3 commits; 136 paths; refs: main, origin/main; no stash)
+   Commit metadata: author = committer = Fer-as <78626961+Fer-as@users.noreply.github.com>;
+   no Co-authored-by / Signed-off-by trailers.
+   gitleaks v8.30.1 git --log-opts=--all (repo config):   no leaks found
+   gitleaks default rules only (no allowlist):            3 findings, all GPG_KEY public CPython
+     fingerprint (docs/security-exceptions.md, evidence/task-05-shared-state/04-docker-final-image.txt x2)
+   Pattern scan over every blob in history (counts):
+     full AWS account ID ............................ 0
+     12-digit account in ARNs ....................... 4 (111122223333, AWS example, tests)
+     AWS access key IDs (AKIA/ASIA) ................. 0
+     secret/session key strings ..................... 2 (AWS_SECRET_ACCESS_KEY=local, DynamoDB Local dummy, in comments/evidence)
+     private key headers ............................ 0
+     GitHub tokens .................................. 0
+     IAM user name .................................. 0
+     local Windows paths / user name in content ..... 0
+     email addresses ................................ 2 (you@example.com in tfvars.example)
+     public IPv4 .................................... 203.0.113.10 (RFC 5737 documentation) and 1.3.1.2 (version string)
+     GitHub numeric owner/repo IDs .................. 20 (evidence plans; public via API)
+     ECR registry hosts ............................. 111122223333 only (tests)
+     Terraform state content ........................ 0
+     account ID last 4 digits ....................... 3 evidence summaries (tasks 10-12)
+   Accidental file: added in 9bcd827; content = 15 lines of `git diff --check` output;
+   the file NAME contains the local Windows user name/path fragment and ends in U+F022.
+
+3. GitHub settings (read-only): environments = 0; rulesets and branch protection = not
+   available on a private Free repo (HTTP 403); Actions default workflow permissions = read;
+   OIDC: use_immutable_subject = true, sub_claim_prefix matches terraform/bootstrap
+   (owner id and repository id identical).
+
+4. Proposed approval-gate test workflow (docs/public-release-and-approval.md section 4):
+   actionlint 1.7.12 - no findings (checked outside the repository; not added to .github/).

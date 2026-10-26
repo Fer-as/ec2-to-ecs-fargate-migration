@@ -1,0 +1,26 @@
+Task 16 - Pre-deployment engineering sprint (2026-10-26)
+=========================================================
+Safety: no AWS calls (no credentials used), no Terraform apply/destroy/plan against AWS,
+no ECR push, no workflow triggered, no GitHub settings changed (read-only gh queries),
+no commits/pushes. Docker objects created only with the legacy-api-rehearsal* prefix and
+removed afterwards; the draw.io exporter image was pulled (pinned digest) for rendering.
+
+Files
+  02-workflow-policy-negative-tests.txt  21 unsafe workflow variants + 1 real unsafe file rejected
+  03-local-migration-rehearsal.txt       22/22 container rehearsal checks; Linux suite with
+                                         DynamoDB Local 84 passed + 2 xfail; smoke 17/17
+  04-validation.txt                      pre-commit, actionlint, yamllint, shellcheck, ruff,
+                                         pytest, Terraform, Checkov, gitleaks, draw.io XML, Git
+
+Results
+  ci/tests                        347 passed (incl. 25 new workflow-privilege tests)
+  app tests (Windows)             62 passed, 24 skipped (need Linux/DynamoDB Local)
+  app tests + DynamoDB Local      82 passed, 4 skipped (Windows; Gunicorn tests need Linux)
+  app tests in Linux container    84 passed, 2 xfailed (documented in-memory defects)
+  Terraform                       fmt/validate OK; platform 18 + bootstrap 9 tests passed
+  Checkov 3.3.26                  285 passed, 0 failed, 30 skipped
+  gitleaks v8.30.1                no leaks (history and working tree)
+  Bootstrap plan file             unchanged (sha256 39dd4932...), still gitignored
+
+Not verified here (needs the owner / AWS): approval-gate runtime tests on GitHub,
+bootstrap apply, any AWS runtime behaviour.

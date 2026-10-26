@@ -1,39 +1,48 @@
 # Acceptance checklist: EC2 → ECS Fargate migration
 
-Last updated: 2026-10-25 (Task 13). One row per mandatory criterion.
+Last updated: 26 Oct 2026 (Task 16). **Nothing is deployed in AWS yet.**
 
-Verification levels: **L** = local (tests, scans, mocked Terraform, read-only AWS plan or
-simulation), **CI** = GitHub Actions run passed, **AWS** = observed on live AWS resources.
-**Verified** means the verification the criterion needs has actually passed. Anything
-that needs a running AWS environment stays **In progress** until AWS evidence exists.
+Status values: **Implemented only** (code/docs exist, not tested) · **Verified locally**
+· **Verified in GitHub Actions** · **Verified in AWS** (live demonstration succeeded) ·
+**Not yet tested** · **Blocked**. A requirement that needs a running AWS environment is
+never shown as Verified in AWS until that demonstration has happened.
 
-CI runs that passed (revision `854d6ef`, before Tasks 11-13):
-[CI push](https://github.com/Fer-as/ec2-to-ecs-fargate-migration/actions/runs/40178212067),
-[Terraform CI push](https://github.com/Fer-as/ec2-to-ecs-fargate-migration/actions/runs/40178212108),
-[CI manual](https://github.com/Fer-as/ec2-to-ecs-fargate-migration/actions/runs/40178748039),
-[Terraform CI manual](https://github.com/Fer-as/ec2-to-ecs-fargate-migration/actions/runs/40178749931).
-Changes from Tasks 11-13 have **not** run on GitHub yet.
+GitHub Actions runs (all passed):
 
-No AWS resources exist yet: the bootstrap plan (Task 12) is waiting for approval.
+| Commit | CI | Terraform CI |
+|---|---|---|
+| `9dd04a4` (IAM hardening, policy gate, pre-commit) | [run 40304611511](https://github.com/Fer-as/ec2-to-ecs-fargate-migration/actions/runs/40304611511) | [run 40304611545](https://github.com/Fer-as/ec2-to-ecs-fargate-migration/actions/runs/40304611545) |
+| `854d6ef` (push) | [run 40178212067](https://github.com/Fer-as/ec2-to-ecs-fargate-migration/actions/runs/40178212067) | [run 40178212108](https://github.com/Fer-as/ec2-to-ecs-fargate-migration/actions/runs/40178212108) |
+| `854d6ef` (manual) | [run 40178748039](https://github.com/Fer-as/ec2-to-ecs-fargate-migration/actions/runs/40178748039) | [run 40178749931](https://github.com/Fer-as/ec2-to-ecs-fargate-migration/actions/runs/40178749931) |
 
-| # | Requirement | Implementation | Verification (L / CI / AWS) | Evidence | Status | Remaining gap |
-|---|---|---|---|---|---|---|
-| 1 | Production Docker image | [Dockerfile](../Dockerfile) (digest-pinned base, non-root 10001, read-only rootfs, `/health` healthcheck, Gunicorn) | L: build, smoke, non-root, Trivy. CI: `container` job passed | [task-04](../evidence/task-04-container/), [task-05](../evidence/task-05-shared-state/), CI runs above | **Verified** (L + CI) | Not yet pushed to ECR or run on Fargate |
-| 2 | ECR repository | [bootstrap/main.tf](../terraform/bootstrap/main.tf) (immutable tags, scan on push, lifecycle) | L: mocked tests, Checkov, authenticated plan. AWS: — | [task-12 plan](../evidence/task-12-iam-blockers/02-bootstrap-plan-redacted.txt) | In progress | Bootstrap apply (needs approval); first image push |
-| 3 | ECS Fargate in private subnets | [ecs.tf](../terraform/ecs.tf), [network.tf](../terraform/network.tf) (`assign_public_ip = false`, NAT, gateway endpoints) | L: `terraform test` (18), Checkov. CI: Terraform CI passed (pre-Task 11 code). AWS: — | [task-06](../evidence/task-06-terraform/), [task-08](../evidence/task-08-readiness/) | In progress | Platform apply; tasks running in private subnets |
-| 4 | Two availability zones | [network.tf](../terraform/network.tf), [main.tf](../terraform/main.tf) (public and private subnet in each of 2 AZs) | L: test `pinned_availability_zones_are_used`. AWS: — | [task-06](../evidence/task-06-terraform/) | In progress | Live tasks and ALB nodes in both AZs |
-| 5 | ALB and security groups | [alb.tf](../terraform/alb.tf), [main.tf](../terraform/main.tf) (ALB → tasks only, EC2 egress 80/443, verification routes need operator CIDRs) | L: tests `secure_network_defaults`, `workloads_never_use_the_default_security_group`; Checkov (exceptions B1-B5, B11). AWS: — | [security-exceptions.md](security-exceptions.md), [task-12](../evidence/task-12-iam-blockers/04-checkov.txt) | In progress | Live target health and SG rules |
-| 6 | IAM least privilege | [iam.tf](../terraform/iam.tf) (task, execution, EC2 roles); [bootstrap policies](../terraform/bootstrap/policies/) (pipeline roles) | L: 320 CI tests incl. rendered-policy gate, AWS policy simulator 172/172, Access Analyzer 0 findings. AWS: — | [iam-permission-matrix.md](iam-permission-matrix.md), [task-12](../evidence/task-12-iam-blockers/) | In progress | Roles created; first real apply proves no permission is missing |
-| 7 | Autoscaling | [ecs.tf](../terraform/ecs.tf) (target tracking, CPU 60 %) | L: mocked plan. AWS: — | — | In progress | Scaling observed under load |
-| 8 | GitHub Actions and OIDC | [.github/workflows/](../.github/workflows/), [bootstrap/github_oidc.tf](../terraform/bootstrap/github_oidc.tf) (exact immutable `sub`, no stored keys) | L: workflow policy tests, actionlint. CI: `ci.yml`, `terraform-ci.yml` passed. AWS: — | CI runs above, [ci-cd.md](ci-cd.md) | In progress | OIDC roles not created; `deploy.yml` never run; Task 11-13 changes not yet run in CI |
-| 9 | Deployment approval | `deploy.yml` `production` environment (designed); apply role trusts only that environment | — | [iam-permission-matrix.md §6](iam-permission-matrix.md), [ci-cd.md §5](ci-cd.md) | Not started | Private repo on Free has no required reviewers. Owner must choose: public + protected environment, or a separately controlled apply |
-| 10 | CloudWatch logs and alarms | [ecs.tf](../terraform/ecs.tf) (`/ecs/legacy-api-production`), [monitoring.tf](../terraform/monitoring.tf) (alarms, SNS, dashboard), VPC flow logs | L: mocked tests, Checkov. AWS: — | [task-06](../evidence/task-06-terraform/) | In progress | Logs flowing and an alarm firing on live resources |
-| 11 | EC2 → ECS cutover | Weighted listener `traffic_stage` 0-3, shared DynamoDB state, [migration-state-runbook.md](migration-state-runbook.md), `ci/plan_guard.py` | L: tests `half_split_with_shared_storage`, `full_cutover_and_rollback_weights`, DynamoDB integration tests. CI: test job passed. AWS: — | [task-05](../evidence/task-05-shared-state/), [task-07](../evidence/task-07-cicd/) | In progress | Live staged traffic shift with `verify_rollout.py` |
-| 12 | Rollback | `traffic_stage` back to 0 (EC2 stays the rollback target), [ci-cd.md §8](ci-cd.md) | L: tests `full_cutover_and_rollback_weights`, `rollback_to_dynamodb_backed_ec2`. AWS: — | [task-06](../evidence/task-06-terraform/) | In progress | Rollback drill on AWS with timings |
-| 13 | Architecture diagram | — ([ARCHITECTURE.md](../ARCHITECTURE.md) describes the original EC2 app) | — | — | Not started | Diagram of the target ECS architecture |
-| 14 | Documentation and evidence | [docs/](.), [evidence/](../evidence/), this checklist | L: evidence files from real runs (redacted). CI: links above | [evidence/](../evidence/) | In progress | AWS runtime evidence; final README for the migrated platform |
-| 15 | Safe teardown | [aws-platform.md §8](aws-platform.md) (order, deletion protection, state bucket `prevent_destroy`) | — | — | Not started | Teardown run and confirmed on AWS (costs stopped, state kept or removed deliberately) |
+Task 16 changes (approval-gate workflow, workflow privilege tests, rehearsal script,
+diagrams, runbooks) are **not yet pushed**, so they are verified locally only.
 
-Shift-left checks (Task 13): [.pre-commit-config.yaml](../.pre-commit-config.yaml), run
-locally and in the CI lint job; verified locally (positive and negative tests), not yet
-on GitHub.
+| # | Requirement | Implementation | Local | GitHub Actions | AWS | Evidence | Status | Remaining gap |
+|---|---|---|---|---|---|---|---|---|
+| 1 | Legacy EC2 baseline | [main.tf](../terraform/main.tf), [user data](../terraform/templates/user_data.sh.tftpl), `app/`, `nginx/`, `systemd/` | Tests, user-data render | Terraform CI (render + shellcheck) | – | [task-06](../evidence/task-06-terraform/) | Verified in GitHub Actions | Running instance on AWS |
+| 2 | Production Docker image | [Dockerfile](../Dockerfile): digest-pinned base, UID 10001, read-only FS, healthcheck | Build, smoke 17/17, rehearsal | CI `container` job, Trivy gate | – | [task-04](../evidence/task-04-container/), [task-16](../evidence/task-16-predeployment/03-local-migration-rehearsal.txt) | Verified in GitHub Actions | Pushed to ECR, running on Fargate |
+| 3 | DynamoDB shared persistence | [storage.py](../app/storage.py), [dynamodb.tf](../terraform/dynamodb.tf) | 20 DynamoDB Local tests; 2-container rehearsal 22/22 | CI test job with DynamoDB Local | – | [task-05](../evidence/task-05-shared-state/), [task-16](../evidence/task-16-predeployment/) | Verified in GitHub Actions | Real table and IAM (LeadingKeys) in AWS |
+| 4 | ECR | [bootstrap/main.tf](../terraform/bootstrap/main.tf) | Mocked tests, read-only plan | Terraform CI | – | [task-12 plan](../evidence/task-12-iam-blockers/02-bootstrap-plan-redacted.txt) | Implemented only (plan reviewed) | Bootstrap apply; first push |
+| 5 | ECS Fargate | [ecs.tf](../terraform/ecs.tf) | Mocked tests (18) | Terraform CI, Checkov | – | [task-06](../evidence/task-06-terraform/) | Verified in GitHub Actions (code) | Service running |
+| 6 | Two availability zones | [network.tf](../terraform/network.tf), [main.tf](../terraform/main.tf) | `pinned_availability_zones_are_used` | Terraform CI | – | — | Verified in GitHub Actions (code) | Tasks/ALB in both AZs |
+| 7 | Private task networking | `assign_public_ip = false`, private subnets, NAT, gateway endpoints | `workloads_never_use_the_default_security_group` | Terraform CI | – | [readiness review](deployment-readiness-review.md) | Verified in GitHub Actions (code) | Live check |
+| 8 | ALB routing + security groups | [alb.tf](../terraform/alb.tf) | `secure_network_defaults`, weight tests | Terraform CI, Checkov | – | [security-exceptions.md](security-exceptions.md) | Verified in GitHub Actions (code) | Live target health |
+| 9 | Staged traffic cutover | `traffic_stage` 0-3, listener preconditions, plan_guard | Mocked weight tests; rehearsal (shared state) | Terraform CI | – | [migration diagram](architecture/migration-traffic-flow.png) | Verified locally (logic only) | Live 90/10 → 50/50 → 0/100 |
+| 10 | Rollback | `traffic_stage = 0`; EC2 kept DynamoDB-backed | Rollback weight tests; simulated rollback in rehearsal | Terraform CI | – | [task-16](../evidence/task-16-predeployment/03-local-migration-rehearsal.txt) | Verified locally (simulation) | Live rollback drill with timing |
+| 11 | IAM least privilege + OIDC | [bootstrap policies](../terraform/bootstrap/policies/), [iam.tf](../terraform/iam.tf) | Policy gate, AWS simulator 172/172, Access Analyzer 0 findings | CI pytest (policy gate) | – | [iam-permission-matrix.md](iam-permission-matrix.md), [task-12](../evidence/task-12-iam-blockers/) | Verified in GitHub Actions (policy text) | Roles created; first real apply |
+| 12 | GitHub CI | [ci.yml](../.github/workflows/ci.yml) | All gates | Runs above | n/a | Runs above | Verified in GitHub Actions | — |
+| 13 | Terraform CI | [terraform-ci.yml](../.github/workflows/terraform-ci.yml) | fmt/validate/test, Checkov | Runs above | n/a | Runs above | Verified in GitHub Actions | — |
+| 14 | Pre-commit security | [.pre-commit-config.yaml](../.pre-commit-config.yaml) | Positive + 8 negative tests | CI lint job (`9dd04a4`) | n/a | [task-13](../evidence/task-13-precommit/) | Verified in GitHub Actions | — |
+| 15 | Protected deployment | `deploy.yml` apply in `production`; [approval-gate-test.yml](../.github/workflows/approval-gate-test.yml); privilege tests on every workflow | 21 unsafe variants + 1 real file rejected | – (not pushed) | n/a | [approval-gate-test.md](approval-gate-test.md), [task-16](../evidence/task-16-predeployment/02-workflow-policy-negative-tests.txt) | Configured (owner, API read-back); runtime **Not yet tested** | Tests 1-3 on GitHub |
+| 16 | CloudWatch logs, alarms, dashboard | [monitoring.tf](../terraform/monitoring.tf), log groups in ecs.tf/network.tf | Mocked tests | Terraform CI | – | — | Verified in GitHub Actions (code) | Logs flowing; alarm firing; dashboard screenshot |
+| 17 | Remote state + locking | [backend.tf](../terraform/backend.tf) (`use_lockfile`), state bucket | Bootstrap tests | Terraform CI | – | [first-deployment-checklist.md §3](first-deployment-checklist.md) | Implemented only | Lock test against the real bucket |
+| 18 | Architecture diagrams | [docs/architecture/](architecture/) (editable `.drawio` + PNG) | XML validated; rendered with draw.io | n/a | n/a | [README](architecture/README.md) | Verified locally | Update after deployment if anything changes |
+| 19 | Demonstration video | – | – | – | – | – | Not yet tested | Record after the AWS demo |
+| 20 | Safe teardown | [first-deployment-checklist.md §11](first-deployment-checklist.md), [aws-platform.md §8](aws-platform.md) | – | – | – | – | Implemented only | Teardown run + billing check |
+| 21 | Known limitations and cost | [aws-platform.md §7, §11](aws-platform.md), [readiness review](deployment-readiness-review.md) | n/a | n/a | n/a | — | Documented | Confirm prices in the AWS Pricing Calculator |
+
+Blocked items: none at code level. Process gates before AWS: approval-gate runtime
+test, independent review and explicit approval of the 23-resource bootstrap plan
+(publication permission from CoderCo is tracked separately in
+[public-release-and-approval.md](public-release-and-approval.md)).

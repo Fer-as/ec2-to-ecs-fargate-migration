@@ -1,0 +1,78 @@
+Workflow privilege policy - negative tests (in-memory mutations of the real workflows; nothing written to .github/)
+Real workflows: ['approval-gate-test.yml', 'ci.yml', 'deploy.yml', 'terraform-ci.yml'] -> violations: []
+
+REJECTED: CI job using the production environment
+    - ci.yml/lint: uses the production environment but is not an approved production job
+    - ci.yml/lint: pull-request workflow has a privileged or environment job
+REJECTED: CI pushing an image
+    - ci.yml/container: unexpected privileged job (OIDC token, AWS credentials, push or apply)
+    - ci.yml/container: privileged job reachable from ['pull_request', 'push', 'workflow_call', 'workflow_dispatch'] (only workflow_dispatch)
+    - ci.yml/container: pull-request workflow has a privileged or environment job
+REJECTED: CI requesting an OIDC token
+    - ci.yml/test: unexpected privileged job (OIDC token, AWS credentials, push or apply)
+    - ci.yml/test: id-token: write outside the approved deploy jobs
+    - ci.yml/test: privileged job reachable from ['pull_request', 'push', 'workflow_call', 'workflow_dispatch'] (only workflow_dispatch)
+    - ci.yml/test: pull-request workflow has a privileged or environment job
+REJECTED: Terraform CI configuring AWS credentials
+    - terraform-ci.yml/validate: unexpected privileged job (OIDC token, AWS credentials, push or apply)
+    - terraform-ci.yml/validate: privileged job reachable from ['pull_request', 'push', 'workflow_call', 'workflow_dispatch'] (only workflow_dispatch)
+    - terraform-ci.yml/validate: pull-request workflow has a privileged or environment job
+REJECTED: apply job in a different environment
+    - deploy.yml/apply: must run in environment production
+REJECTED: apply job without the production environment
+    - deploy.yml/apply: must run in environment production
+REJECTED: apply no longer needs plan
+    - deploy.yml/apply: privileged job does not depend on ['terraform-ci']
+    - deploy.yml/apply: must depend on plan, publish, preflight, ci and terraform-ci
+REJECTED: apply running even if plan failed
+    - deploy.yml/apply: condition 'always()' can run after a failed gate
+REJECTED: approval test calling AWS
+    - approval-gate-test.yml/approval: unexpected privileged job (OIDC token, AWS credentials, push or apply)
+    - approval-gate-test.yml: must not reference 'aws'
+REJECTED: approval test given an OIDC token
+    - approval-gate-test.yml/approval: unexpected privileged job (OIDC token, AWS credentials, push or apply)
+    - approval-gate-test.yml/approval: id-token: write outside the approved deploy jobs
+    - approval-gate-test.yml: must not reference 'id-token'
+REJECTED: approval test main guard removed
+    - approval-gate-test.yml: first step must refuse refs other than main
+REJECTED: approval test on pull requests
+    - approval-gate-test.yml/approval: pull-request workflow has a privileged or environment job
+    - approval-gate-test.yml: only workflow_dispatch allowed
+REJECTED: approval test reading a secret
+    - approval-gate-test.yml: must not reference 'secrets.'
+REJECTED: contents: write on a job
+    - ci.yml/lint: permission contents: write not allowed
+REJECTED: deploy on push
+    - deploy.yml/publish: privileged job reachable from ['push'] (only workflow_dispatch)
+    - deploy.yml/plan: privileged job reachable from ['push'] (only workflow_dispatch)
+    - deploy.yml/apply: privileged job reachable from ['push'] (only workflow_dispatch)
+REJECTED: deploy reachable from pull requests
+    - deploy.yml/publish: privileged job reachable from ['pull_request', 'workflow_dispatch'] (only workflow_dispatch)
+    - deploy.yml/plan: privileged job reachable from ['pull_request', 'workflow_dispatch'] (only workflow_dispatch)
+    - deploy.yml/apply: privileged job reachable from ['pull_request', 'workflow_dispatch'] (only workflow_dispatch)
+    - deploy.yml/publish: pull-request workflow has a privileged or environment job
+    - deploy.yml/plan: pull-request workflow has a privileged or environment job
+    - deploy.yml/apply: pull-request workflow has a privileged or environment job
+REJECTED: main-branch guard removed from deploy
+    - deploy.yml/preflight: first step must refuse refs other than main
+REJECTED: new workflow requesting an OIDC token
+    - sneaky.yml/x: unexpected privileged job (OIDC token, AWS credentials, push or apply)
+    - sneaky.yml/x: id-token: write outside the approved deploy jobs
+REJECTED: publish skipping the CI gates
+    - deploy.yml/publish: privileged job does not depend on ['ci', 'preflight', 'terraform-ci']
+    - deploy.yml/plan: privileged job does not depend on ['ci', 'preflight', 'terraform-ci']
+    - deploy.yml/apply: privileged job does not depend on ['ci', 'preflight', 'terraform-ci']
+    - deploy.yml/apply: must depend on plan, publish, preflight, ci and terraform-ci
+REJECTED: pull_request_target trigger
+    - ci.yml: pull_request_target/workflow_run triggers are not allowed
+REJECTED: write-all permissions
+    - ci.yml: top-level permissions must be exactly 'contents: read' (got 'write-all')
+### File-based negative test: .github/workflows/zz-temporary-unsafe-fixture.yml (temporary, never staged)
+E         Left contains 2 more items, first extra item: 'zz-temporary-unsafe-fixture.yml/sneaky: unexpected privileged job (OIDC token, AWS credentials, push or apply)'
+E       AssertionError: assert {('deploy.yml...l', 'sneaky')} == {('deploy.yml...', 'publish')}
+E         ('zz-temporary-unsafe-fixture.yml', 'sneaky')
+FAILED ci/tests/test_workflow_privileges.py::test_real_workflows_satisfy_the_privilege_policy
+FAILED ci/tests/test_workflow_privileges.py::test_only_the_three_deploy_jobs_are_privileged
+2 failed, 23 passed in 0.17s
+### After removing the fixture
+25 passed in 0.11s

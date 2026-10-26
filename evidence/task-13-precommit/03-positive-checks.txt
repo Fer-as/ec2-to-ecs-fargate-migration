@@ -1,0 +1,95 @@
+== pre-commit --all-files (tracked)
+trim trailing whitespace.................................................................Passed
+fix end of files.........................................................................Passed
+mixed line ending........................................................................Passed
+check yaml...............................................................................Passed
+check json (incl. IAM policy templates)..............................(no files to check)Skipped
+check for merge conflicts................................................................Passed
+check for case conflicts.................................................................Passed
+detect private key.......................................................................Passed
+check for added large files..............................................................Passed
+yamllint.................................................................................Passed
+ruff check...............................................................................Passed
+Detect hardcoded secrets.................................................................Passed
+terraform fmt............................................................................Passed
+forbid Terraform state/plans, local tfvars, keys and Python caches...(no files to check)Skipped
+exit=0
+
+== pre-commit on untracked new files
+trim trailing whitespace.................................................................Passed
+fix end of files.........................................................................Passed
+mixed line ending........................................................................Passed
+check yaml...............................................................................Passed
+check json (incl. IAM policy templates)..................................................Passed
+check for merge conflicts................................................................Passed
+check for case conflicts.................................................................Passed
+detect private key.......................................................................Passed
+check for added large files..............................................................Passed
+yamllint.............................................................(no files to check)Skipped
+ruff check...............................................................................Passed
+Detect hardcoded secrets.................................................................Passed
+terraform fmt........................................................(no files to check)Skipped
+forbid Terraform state/plans, local tfvars, keys and Python caches...(no files to check)Skipped
+exit=0
+
+== actionlint 1.7.12 (pinned image)
+exit=0
+== yamllint 1.38.0 (via pre-commit hook)
+yamllint.................................................................Passed
+exit=0
+== shellcheck (as ci.yml)
+exit=0
+
+== pytest ci/tests
+................................                                         [100%]
+320 passed in 0.70s
+== pytest app suite
+SKIPPED [2] tests\test_gunicorn_workers.py:147: Gunicorn cannot run on Windows; runs on Linux/CI
+62 passed, 24 skipped, 13 warnings in 0.67s
+== terraform
+fmt ok
+Success! The configuration is valid.
+Success! 18 passed, 0 failed.
+== terraform/bootstrap
+fmt ok
+Success! The configuration is valid.
+Success! 9 passed, 0 failed.
+
+== gitleaks v8.30.1: git history (as ci.yml)
+8:41PM INF 2 commits scanned.
+8:41PM INF scanned ~711638 bytes (711.64 KB) in 2.11s
+8:41PM INF no leaks found
+exit=0
+== gitleaks dir (working tree incl. uncommitted): .github
+8:41PM INF scanned ~29968 bytes (29.97 KB) in 18.1ms
+8:41PM INF no leaks found
+== gitleaks dir (working tree incl. uncommitted): ci
+8:41PM INF scanned ~454684 bytes (454.68 KB) in 130ms
+8:41PM INF no leaks found
+== gitleaks dir (working tree incl. uncommitted): docs
+8:41PM INF scanned ~69671 bytes (69.67 KB) in 23.4ms
+8:41PM INF no leaks found
+== gitleaks dir (working tree incl. uncommitted): evidence
+8:41PM INF scanned ~660284 bytes (660.28 KB) in 107ms
+8:41PM INF no leaks found
+== gitleaks dir (working tree incl. uncommitted): terraform
+8:41PM INF scanned ~184810 bytes (184.81 KB) in 175ms
+8:41PM INF no leaks found
+== gitleaks dir (working tree incl. uncommitted): tests
+8:41PM INF scanned ~195252 bytes (195.25 KB) in 59.3ms
+8:41PM INF no leaks found
+== gitleaks dir (working tree incl. uncommitted): app
+8:41PM INF scanned ~51334 bytes (51.33 KB) in 29.7ms
+8:41PM INF no leaks found
+== gitleaks dir (working tree incl. uncommitted): scripts
+8:41PM INF scanned ~11176 bytes (11.18 KB) in 13.9ms
+8:41PM INF no leaks found
+== gitleaks dir (working tree incl. uncommitted): .pre-commit-config.yaml
+8:41PM INF scanned ~2916 bytes (2.92 KB) in 8.74ms
+8:41PM INF no leaks found
+== gitleaks dir (working tree incl. uncommitted): ruff.toml
+8:41PM INF scanned ~363 bytes (363 bytes) in 6.44ms
+8:41PM INF no leaks found
+
+== Checkov 3.3.26 (pinned image) over terraform/
+Passed checks: 285, Failed checks: 0, Skipped checks: 30

@@ -30,6 +30,7 @@ env:
   PYTHON_VERSION: "3.12"
   PIP_AUDIT_VERSION: "2.10.1"
   YAMLLINT_VERSION: "1.38.0"
+  PRE_COMMIT_VERSION: "4.6.2"
   TRIVY_IMAGE: aquasec/trivy@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa # 0.75.0
   ACTIONLINT_IMAGE: rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 # 1.7.12
   SHELLCHECK_IMAGE: koalaman/shellcheck@sha256:2097951f02e735b613f4a34de20c40f937a6c8f18ecb170612c88c34517221fb # v0.10.0
@@ -57,6 +58,16 @@ jobs:
         run: |
           python -m pip install --quiet "yamllint==${YAMLLINT_VERSION}"
           yamllint --strict -c .yamllint.yml .github/workflows
+
+      # Same hooks developers run locally (.pre-commit-config.yaml), so skipping them with
+      # `git commit --no-verify` does not bypass the checks. gitleaks and terraform fmt are
+      # skipped here only because the secrets job and terraform-ci.yml already run them.
+      - name: pre-commit (whitespace, line endings, YAML/JSON, Ruff, private keys, large files, artefacts)
+        env:
+          SKIP: gitleaks,terraform-fmt
+        run: |
+          python -m pip install --quiet "pre-commit==${PRE_COMMIT_VERSION}"
+          pre-commit run --all-files --show-diff-on-failure --color always
 
       - name: shellcheck
         run: |
@@ -102,7 +113,7 @@ jobs:
           done
           echo "::error::DynamoDB Local did not start"; exit 1
 
-      - name: pytest (contract, validation, DynamoDB integration, Gunicorn multi-worker)
+      - name: pytest (contract, validation, DynamoDB integration, Gunicorn multi-worker, CI helpers, rendered IAM policy gate)
         run: |
           python -m pytest -v -rxXs -p no:cacheprovider 2>&1 | tee "$RUNNER_TEMP/pytest.txt"
           python -m pytest -v -p no:cacheprovider ci/tests 2>&1 | tee "$RUNNER_TEMP/pytest-ci.txt"

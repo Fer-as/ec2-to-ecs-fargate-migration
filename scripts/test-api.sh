@@ -22,9 +22,9 @@ test_endpoint() {
     local endpoint=$2
     local data=$3
     local expected_status=$4
-    
+
     echo -n "Testing $method $endpoint... "
-    
+
     if [ "$method" == "GET" ]; then
         response=$(curl -s -w "\n%{http_code}" "$BASE_URL$endpoint")
     else
@@ -33,10 +33,10 @@ test_endpoint() {
             -d "$data" \
             "$BASE_URL$endpoint")
     fi
-    
+
     status_code=$(echo "$response" | tail -n1)
     body=$(echo "$response" | sed '$d')
-    
+
     if [ "$status_code" == "$expected_status" ]; then
         echo -e "${GREEN}✓ OK (${status_code})${NC}"
         if [ -n "$body" ]; then

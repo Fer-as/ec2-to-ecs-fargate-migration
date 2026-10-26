@@ -1,0 +1,9 @@
+# Ruff: lightweight Python lint (run by pre-commit locally and in CI's lint job).
+# Rule set: Ruff defaults (pyflakes F + pycodestyle E4/E7/E9) - real bugs such as
+# undefined names, unused imports and syntax errors, no style-only rewrites.
+target-version = "py312"
+line-length = 120
+extend-exclude = ["venv", "evidence"]
+
+[lint]
+select = ["E4", "E7", "E9", "F"]

@@ -1,0 +1,12 @@
+Rendered-policy gate mutation check (in memory, nothing written), 2026-10-25T19:57Z
+Each line injects one known-bad change into the rendered policies and lists the gate tests that fail.
+
+CAUGHT: Task 11 untagged-SG allow -> ['test_allow_never_targets_untagged_resources']
+CAUGHT: service-wide ec2:* on * -> ['test_no_allow_matches_a_prohibited_action', 'test_service_wide_wildcards_only_where_allowed']
+CAUGHT: tag condition on action without tag support -> ['test_condition_keys_are_supported_by_every_guarded_action']
+CAUGHT: misspelt action -> ['test_every_action_exists_in_the_aws_reference']
+CAUGHT: permissive IfExists -> ['test_if_exists_only_where_reviewed']
+CAUGHT: key pair allow -> ['test_no_allow_matches_a_prohibited_action']
+CAUGHT: kms access -> ['test_every_action_exists_in_the_aws_reference', 'test_no_allow_matches_a_prohibited_action']
+CAUGHT: IAM added to region deny -> ['test_required_explicit_denies_are_present']
+CAUGHT: Task 11 layout: all write statements inline -> ['test_inline_policies_fit_the_role_quota']

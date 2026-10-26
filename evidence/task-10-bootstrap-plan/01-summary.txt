@@ -1,0 +1,41 @@
+# Task 10: authenticated AWS inventory and bootstrap plan review (2026-10-25)
+# Read-only. Account ID and IAM user name are redacted. Nothing was applied.
+
+## Identity and Region (confirmed by the account owner before any Terraform call)
+Caller:  IAM user (not root), account ********7756, profile "default" (aws login / login_session)
+Region:  eu-west-2   AZs available: eu-west-2a (euw2-az2), 2b (euw2-az3), 2c (euw2-az1), 2d (euw2-az4)
+
+## Existing resources / collisions (read-only)
+GitHub OIDC provider token.actions.githubusercontent.com: PRESENT (created 2026-09-23),
+  ClientIDList = [sts.amazonaws.com] -> create_github_oidc_provider = false (read as data source only)
+  7 existing roles from other projects trust it, all with exact StringEquals subjects for other repos
+State bucket legacy-api-tfstate-<acct>-eu-west-2: 404 (free)    ECR legacy-api: not found
+Roles gha-legacy-api-{plan,image-push,apply}: NoSuchEntity       DynamoDB legacy-api-production: not found
+Project-tagged VPCs: 0.   eu-west-2 today: only the default VPC (no instances, ECS/EKS, logs, SNS, alarms)
+
+## Quotas (eu-west-2)
+Elastic IPs 0/5 (platform +2) | VPCs 1/5 (+1) | NAT/AZ 0/5 (+1) | Fargate vCPU quota 30 | Std vCPU quota 16 | ALBs 0/50 | IAM roles 16/1000
+
+## Credential compatibility
+AWS CLI 2.36.47, Terraform 1.16.2, AWS provider 5.100.0 (lock file)
+Native profile (login_session): FAILED - "No valid credential sources found" (provider predates aws login)
+Process-only exported short-lived credentials (aws configure export-credentials --format env): WORKS
+  (values never printed or written; unset after each run)
+
+## Bootstrap root
+fmt -check: ok | init -lockfile=readonly (local backend): ok | validate: ok
+plan -input=false -out=bootstrap.tfplan:  Plan: 18 to add, 0 to change, 0 to destroy
+  creates: S3 bucket + versioning + SSE + ownership + public-access block + lifecycle + policy (7),
+           ECR repository + lifecycle policy (2), IAM roles plan/image-push/apply (3), inline policies (6)
+  updates/replacements/deletes: none   existing OIDC provider: read only, not managed
+Outputs: state bucket legacy-api-tfstate-<acct>-eu-west-2, saved_plans_prefix plans/legacy-api
+Trusted subjects:
+  image-push, plan: repo:Fer-as@78626961/ec2-to-ecs-fargate-migration@1432997653:ref:refs/heads/main
+  apply:            repo:Fer-as@78626961/ec2-to-ecs-fargate-migration@1432997653:environment:production
+
+## Security review of planned values
+S3: versioning Enabled, SSE AES256, BucketOwnerEnforced, all 4 public-access blocks true, TLS-only policy
+Lifecycle: 'expire-old-state-versions' (all objects) expires NONCURRENT only (90 d, newest 10 kept);
+           'expire-saved-plans' prefix plans/ expires current after 3 d -> cannot touch state or lock keys
+ECR: IMMUTABLE tags, scan_on_push, AES256, untagged expire 7 d, keep newest 30
+Rendered IAM policies: see 03-iam-policies-rendered.txt

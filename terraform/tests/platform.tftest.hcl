@@ -423,3 +423,51 @@ run "direct_ec2_access_cannot_be_opened_to_the_internet" {
 
   expect_failures = [var.allowed_cidr_blocks]
 }
+
+# Task 12: the VPC's default security group is not managed, so nothing may depend on it
+run "workloads_never_use_the_default_security_group" {
+  command = plan
+
+  variables {
+    app_image_digest    = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    ecs_service_enabled = true
+  }
+
+  override_data {
+    target = data.aws_ecr_image.app[0]
+    values = { image_digest = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" }
+  }
+
+  override_resource {
+    target          = aws_security_group.alb
+    override_during = plan
+    values          = { id = "sg-alb" }
+  }
+  override_resource {
+    target          = aws_security_group.ecs
+    override_during = plan
+    values          = { id = "sg-ecs" }
+  }
+  override_resource {
+    target          = aws_security_group.ec2
+    override_during = plan
+    values          = { id = "sg-ec2" }
+  }
+
+  assert {
+    condition     = toset(aws_lb.app.security_groups) == toset([aws_security_group.alb.id])
+    error_message = "The ALB must use its own security group."
+  }
+  assert {
+    condition     = toset(aws_ecs_service.app[0].network_configuration[0].security_groups) == toset([aws_security_group.ecs.id])
+    error_message = "ECS tasks must use their own security group (an empty list would fall back to the default SG)."
+  }
+  assert {
+    condition     = toset(aws_instance.app.vpc_security_group_ids) == toset([aws_security_group.ec2.id])
+    error_message = "The EC2 instance must use its own security group."
+  }
+  assert {
+    condition     = aws_vpc_endpoint.dynamodb.vpc_endpoint_type == "Gateway" && aws_vpc_endpoint.s3.vpc_endpoint_type == "Gateway"
+    error_message = "Interface endpoints would need a security group; only gateway endpoints are expected."
+  }
+}

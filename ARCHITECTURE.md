@@ -101,7 +101,7 @@
 - **Security Groups**:
   - Inbound: HTTP (80) from `allowed_cidr_blocks`; SSH (22) only if `ssh_allowed_cidr_blocks` is set (closed by default)
   - Outbound: All traffic allowed
-  
+
 - **Network Security**:
   - EC2 in public subnet (for simplicity)
   - Security group restricts access by CIDR
@@ -126,14 +126,14 @@
 
 2. **Application Startup**:
    ```
-   EC2 Boot → User-Data Script → Download App from S3 → Extract → 
-   Setup Python Env → Install Dependencies → Configure Systemd → 
+   EC2 Boot → User-Data Script → Download App from S3 → Extract →
+   Setup Python Env → Install Dependencies → Configure Systemd →
    Start Gunicorn → Configure Nginx → Start Nginx → Ready
    ```
 
 3. **Deployment Flow**:
    ```
-   Terraform Apply → Create S3 Bucket → Upload App Zip → 
+   Terraform Apply → Create S3 Bucket → Upload App Zip →
    Create EC2 Instance → User-Data Executes → App Running
    ```
 

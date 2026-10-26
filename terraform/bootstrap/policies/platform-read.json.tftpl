@@ -1,0 +1,30 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {"Sid": "DescribePlatformServices", "Effect": "Allow",
+     "Action": [
+       "ec2:Describe*", "elasticloadbalancing:Describe*", "ecs:Describe*", "ecs:List*",
+       "application-autoscaling:Describe*", "cloudwatch:Describe*", "cloudwatch:GetDashboard",
+       "cloudwatch:ListDashboards", "cloudwatch:ListTagsForResource", "logs:Describe*",
+       "logs:ListTagsForResource", "logs:ListTagsLogGroup", "sns:GetTopicAttributes",
+       "sns:GetSubscriptionAttributes", "sns:ListSubscriptionsByTopic", "sns:ListTagsForResource",
+       "ecr:DescribeRepositories", "ecr:DescribeImages", "ecr:ListTagsForResource",
+       "route53:GetHostedZone", "route53:GetChange", "route53:ListResourceRecordSets",
+       "route53:ListTagsForResource"],
+     "Resource": "*"},
+    {"Sid": "DescribeAppTable", "Effect": "Allow",
+     "Action": ["dynamodb:Describe*", "dynamodb:ListTagsOfResource"], "Resource": "${table_arn}"},
+    {"Sid": "ReadProjectIam", "Effect": "Allow", "Action": ["iam:Get*", "iam:List*"],
+     "Resource": [
+       "arn:${partition}:iam::${account_id}:role/${project}-*",
+       "arn:${partition}:iam::${account_id}:instance-profile/${project}-*",
+       "arn:${partition}:iam::${account_id}:policy/${project}-*"]},
+    {"Sid": "ReadAppBucket", "Effect": "Allow", "Action": ["s3:Get*", "s3:List*"],
+     "Resource": "arn:${partition}:s3:::${project}-app-*"},
+    {"Sid": "ListStateBucket", "Effect": "Allow", "Action": "s3:ListBucket", "Resource": "${state_bucket_arn}"},
+    {"Sid": "ReadState", "Effect": "Allow", "Action": "s3:GetObject",
+     "Resource": "${state_bucket_arn}/${platform_state_key}"},
+    {"Sid": "StateLockFile", "Effect": "Allow", "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+     "Resource": "${state_bucket_arn}/${platform_state_key}.tflock"}
+  ]
+}

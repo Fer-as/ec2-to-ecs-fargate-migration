@@ -1,0 +1,37 @@
+Task 13 - Shift-left pre-commit checks and acceptance checklist (2026-10-25)
+============================================================================
+No AWS calls. No terraform apply/destroy. No commits, pushes or history changes.
+GitHub settings untouched (only read-only `gh run list` for checklist links).
+
+Added
+  .pre-commit-config.yaml   hooks pinned to commit SHAs (pre-commit-hooks v6.0.0,
+                            yamllint v1.38.0, ruff-pre-commit v0.16.10, gitleaks v8.30.1)
+                            + local hooks: terraform fmt, forbidden artefacts
+  ruff.toml                 Ruff defaults (F, E4, E7, E9); existing code passes unchanged
+  ci.yml (lint job)         one step: pre-commit run --all-files, SKIP=gitleaks,terraform-fmt
+  docs/acceptance-checklist.md, docs/ci-cd.md (pre-commit section, CI status corrected)
+Fixed by the hooks
+  9 lines of trailing whitespace in ARCHITECTURE.md, scripts/test-api.sh,
+  scripts/validate-setup.sh (whitespace only: `git diff -w` is empty; shellcheck passes)
+  ci/tests/data/iam-reference.json CRLF -> LF; ci/refresh_iam_reference.py now writes LF
+
+Local tool versions: pre-commit 4.6.2 (project venv), Terraform 1.16.2, Docker 29.8.0
+Hook installed: .git/hooks/pre-commit
+
+Files
+  02-negative-tests.txt   8 bad fixtures rejected by 8 hooks (incl. via the installed
+                          git hook), then all pass after correction; cleanup
+  03-positive-checks.txt  pre-commit, actionlint, yamllint, shellcheck, pytest, Terraform
+                          fmt/validate/test, gitleaks (history + working tree), Checkov
+
+Results
+  pre-commit (tracked + untracked files)   all hooks pass
+  actionlint / yamllint / shellcheck        pass
+  pytest ci/tests                           320 passed
+  pytest app suite                          62 passed, 24 skipped (Windows: no Gunicorn,
+                                            no DynamoDB Local; these run in CI)
+  terraform fmt/validate/test               both roots OK; 18 + 9 tests passed
+  gitleaks v8.30.1                          no leaks (2 commits of history; working tree)
+  Checkov 3.3.26                            285 passed, 0 failed, 30 skipped
+
+NOT verified: the new CI pre-commit step has not run on GitHub (changes not pushed).

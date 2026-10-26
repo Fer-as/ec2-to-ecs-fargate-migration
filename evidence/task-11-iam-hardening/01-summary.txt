@@ -1,0 +1,45 @@
+Task 11 - Bootstrap IAM hardening and fresh plan (2026-10-25)
+==============================================================
+Account <ACCOUNT_ID> (ends 7756, confirmed in Task 10), region eu-west-2.
+Credentials: AWS CLI login session; exported only inside a subshell for terraform plan,
+never written to files, logs or this evidence.
+
+AWS calls made (all read-only): sts get-caller-identity, terraform plan refresh
+(data sources incl. the existing GitHub OIDC provider), iam simulate-custom-policy (127 calls).
+No AWS resource was created, changed or deleted. No terraform apply. No commits.
+
+Fresh bootstrap plan (terraform/bootstrap/bootstrap.tfplan, gitignored, not committed)
+  sha256: 488a22c42dc2b0304d1ffbbd13cbdfd0723229b221789ce98ceb63b283fab2b5
+  Plan: 18 to add, 0 to change, 0 to destroy (0 replacements)
+  OIDC provider: data source only (create_github_oidc_provider = false); not managed
+  State bucket and ECR repository: still planned creates (they do not exist yet)
+  All 7 role policies are fully shown in the plan (no "known after apply")
+  Trust policies identical to Task 10 (plan/image-push: ref:refs/heads/main,
+  apply: environment:production)
+  The Task 10 plan file was deleted and replaced; it must not be used.
+
+Files
+  02-bootstrap-plan-redacted.txt   terraform plan output, account ID redacted
+  03-iam-policy-simulation.txt     AWS policy simulator: 127/127 scenarios as expected
+  04-checkov.txt                   Checkov 3.3.26: 280 passed, 0 failed, 29 skipped
+  05-permission-matrix.md          copy of docs/iam-permission-matrix.md
+
+Local test results
+  terraform fmt -check (both roots)     OK
+  terraform validate (both roots)       OK
+  terraform test bootstrap (mocked)     8 passed
+  terraform test platform (mocked)      17 passed
+  pytest ci/tests                       181 passed (132 new in test_iam_policies.py)
+
+Status: the plan needs independent review and explicit approval before any apply.
+Approval model still fail-closed (private repo on Free; see matrix section 6).
+
+CORRECTION AND STATUS (added in Task 12, 2026-10-25)
+  - "All 7 role policies" above is wrong. The Task 11 plan had 6 aws_iam_role_policy
+    resources (plan, plan_store, image_push, apply_read, apply_write, apply_plan_store)
+    built from 5 templates, plus 3 trust policies. 18 = 3 roles + 6 role policies
+    + 7 S3 resources + 2 ECR resources.
+  - This Task 11 plan is SUPERSEDED and must not be applied: its apply role carried
+    15,667 characters of inline policy (IAM limit 10,240), so the apply would have
+    failed, and it still allowed changes to untagged security groups.
+    See evidence/task-12-iam-blockers/.

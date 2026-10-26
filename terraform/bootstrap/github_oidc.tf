@@ -17,7 +17,6 @@ locals {
   oidc_host         = "token.actions.githubusercontent.com"
   oidc_provider_arn = var.create_github_oidc_provider ? aws_iam_openid_connect_provider.github[0].arn : data.aws_iam_openid_connect_provider.github[0].arn
   arn_prefix        = "arn:${data.aws_partition.current.partition}"
-  iam_prefix        = "${local.arn_prefix}:iam::${local.account_id}"
 
   repo_display = "${var.github_owner}/${var.github_repository}"
   repo_subject = (var.github_subject_format == "immutable"
@@ -28,9 +27,7 @@ locals {
 
   platform_state_key = "${var.project_name}/platform.tfstate"
   plans_prefix       = "plans/${var.project_name}"
-  # Resources managed by the platform root are named "<project>-..."
-  managed_name = "${var.project_name}-*"
-  table_arn    = "${local.arn_prefix}:dynamodb:${var.aws_region}:${local.account_id}:table/${var.project_name}-${var.environment}"
+  table_arn          = "${local.arn_prefix}:dynamodb:${var.aws_region}:${local.account_id}:table/${var.project_name}-${var.environment}"
 }
 
 resource "aws_iam_openid_connect_provider" "github" {
@@ -76,216 +73,36 @@ data "aws_iam_policy_document" "trust" {
   }
 }
 
-# --- Shared policy pieces -----------------------------------------------------------------
+# --- Permission policies -------------------------------------------------------------------
+#
+# The policies live in policies/*.json.tftpl and are rendered with templatefile() using
+# ARNs built from names (not resource attributes), so the full policy text is visible
+# in `terraform plan` and the same files are evaluated offline by ci/tests/test_iam_policies.py.
+# The permission matrix behind them is in docs/iam-permission-matrix.md.
 
-# Read access needed by `terraform plan` to refresh the platform resources.
-data "aws_iam_policy_document" "platform_read" {
-  #checkov:skip=CKV_AWS_356:Describe/List/Get* read APIs used by terraform refresh do not support resource-level permissions (see docs/security-exceptions.md)
-  statement {
-    sid = "DescribePlatformServices"
-    actions = [
-      "ec2:Describe*",
-      "elasticloadbalancing:Describe*",
-      "ecs:Describe*",
-      "ecs:List*",
-      "application-autoscaling:Describe*",
-      "cloudwatch:Describe*",
-      "cloudwatch:GetDashboard",
-      "cloudwatch:ListDashboards",
-      "cloudwatch:ListTagsForResource",
-      "logs:Describe*",
-      "logs:ListTagsForResource",
-      "logs:ListTagsLogGroup",
-      "sns:GetTopicAttributes",
-      "sns:GetSubscriptionAttributes",
-      "sns:ListSubscriptionsByTopic",
-      "sns:ListTagsForResource",
-      "ecr:DescribeRepositories",
-      "ecr:DescribeImages",
-      "ecr:ListTagsForResource",
-      "route53:GetHostedZone",
-      "route53:GetChange",
-      "route53:ListResourceRecordSets",
-      "route53:ListTagsForResource",
-    ]
-    resources = ["*"]
+locals {
+  partition = data.aws_partition.current.partition
+  policy_vars = {
+    partition            = local.partition
+    region               = var.aws_region
+    account_id           = local.account_id
+    project              = var.project_name
+    table_arn            = local.table_arn
+    state_bucket_arn     = "arn:${local.partition}:s3:::${local.state_bucket_name}"
+    ecr_repository_arn   = "arn:${local.partition}:ecr:${var.aws_region}:${local.account_id}:repository/${var.ecr_repository_name}"
+    platform_state_key   = local.platform_state_key
+    plans_prefix         = local.plans_prefix
+    legacy_instance_type = var.legacy_instance_type
+    ami_owner            = var.legacy_ami_owner
   }
 
-  statement {
-    sid       = "DescribeAppTable"
-    actions   = ["dynamodb:Describe*", "dynamodb:ListTagsOfResource"]
-    resources = [local.table_arn]
+  policies = {
+    for name in ["platform-read", "apply-network", "apply-services", "apply-core", "plan-store-write", "plan-store-read", "image-push"] :
+    name => jsonencode(jsondecode(templatefile("${path.module}/policies/${name}.json.tftpl", local.policy_vars)))
   }
 
-  statement {
-    sid     = "ReadProjectIam"
-    actions = ["iam:Get*", "iam:List*"]
-    resources = [
-      "${local.iam_prefix}:role/${local.managed_name}",
-      "${local.iam_prefix}:instance-profile/${local.managed_name}",
-      "${local.iam_prefix}:policy/${local.managed_name}",
-    ]
-  }
-
-  statement {
-    sid       = "ReadAppBucket"
-    actions   = ["s3:Get*", "s3:List*"]
-    resources = ["${local.arn_prefix}:s3:::${var.project_name}-app-*"]
-  }
-
-  statement {
-    sid       = "ListStateBucket"
-    actions   = ["s3:ListBucket"]
-    resources = [aws_s3_bucket.state.arn]
-  }
-
-  statement {
-    sid       = "ReadState"
-    actions   = ["s3:GetObject"]
-    resources = ["${aws_s3_bucket.state.arn}/${local.platform_state_key}"]
-  }
-
-  statement {
-    sid       = "StateLockFile"
-    actions   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
-    resources = ["${aws_s3_bucket.state.arn}/${local.platform_state_key}.tflock"]
-  }
-}
-
-# The plan job stores the saved plan privately in the state bucket (never as a
-# public workflow artifact); the apply job reads it back after approval.
-data "aws_iam_policy_document" "plan_store_write" {
-  statement {
-    sid       = "WriteSavedPlans"
-    actions   = ["s3:PutObject"]
-    resources = ["${aws_s3_bucket.state.arn}/${local.plans_prefix}/*"]
-  }
-}
-
-data "aws_iam_policy_document" "plan_store_read" {
-  statement {
-    sid       = "ReadSavedPlans"
-    actions   = ["s3:GetObject"]
-    resources = ["${aws_s3_bucket.state.arn}/${local.plans_prefix}/*"]
-  }
-}
-
-# Write access needed by `terraform apply` on the platform root.
-data "aws_iam_policy_document" "platform_write" {
-  statement {
-    sid = "ManagePlatformServicesInRegion"
-    actions = [
-      "ec2:*",
-      "elasticloadbalancing:*",
-      "ecs:*",
-      "application-autoscaling:*",
-      "cloudwatch:*",
-      "logs:*",
-      "sns:*",
-    ]
-    resources = ["*"]
-    condition {
-      test     = "StringEquals"
-      variable = "aws:RequestedRegion"
-      values   = [var.aws_region]
-    }
-  }
-
-  statement {
-    sid       = "ManageAppTableOnly"
-    actions   = ["dynamodb:*"]
-    resources = [local.table_arn]
-  }
-
-  statement {
-    sid       = "ManageAppBucketOnly"
-    actions   = ["s3:*"]
-    resources = ["${local.arn_prefix}:s3:::${var.project_name}-app-*"]
-  }
-
-  statement {
-    sid     = "WriteState"
-    actions = ["s3:PutObject"]
-    resources = [
-      "${aws_s3_bucket.state.arn}/${local.platform_state_key}",
-    ]
-  }
-
-  statement {
-    sid = "ManageProjectRoles"
-    actions = [
-      "iam:CreateRole", "iam:DeleteRole", "iam:UpdateRole", "iam:UpdateAssumeRolePolicy",
-      "iam:TagRole", "iam:UntagRole",
-      "iam:PutRolePolicy", "iam:DeleteRolePolicy",
-      "iam:AttachRolePolicy", "iam:DetachRolePolicy",
-      "iam:CreateInstanceProfile", "iam:DeleteInstanceProfile",
-      "iam:AddRoleToInstanceProfile", "iam:RemoveRoleFromInstanceProfile",
-      "iam:TagInstanceProfile", "iam:UntagInstanceProfile",
-    ]
-    resources = [
-      "${local.iam_prefix}:role/${local.managed_name}",
-      "${local.iam_prefix}:instance-profile/${local.managed_name}",
-    ]
-  }
-
-  statement {
-    sid       = "PassProjectRolesToKnownServicesOnly"
-    actions   = ["iam:PassRole"]
-    resources = ["${local.iam_prefix}:role/${local.managed_name}"]
-    condition {
-      test     = "StringEquals"
-      variable = "iam:PassedToService"
-      values   = ["ecs-tasks.amazonaws.com", "ec2.amazonaws.com", "vpc-flow-logs.amazonaws.com"]
-    }
-  }
-
-  statement {
-    sid       = "ServiceLinkedRoles"
-    actions   = ["iam:CreateServiceLinkedRole"]
-    resources = ["*"]
-    condition {
-      test     = "StringEquals"
-      variable = "iam:AWSServiceName"
-      values = [
-        "ecs.amazonaws.com",
-        "elasticloadbalancing.amazonaws.com",
-        "ecs.application-autoscaling.amazonaws.com",
-      ]
-    }
-  }
-
-  statement {
-    sid    = "ProtectBootstrap"
-    effect = "Deny"
-    actions = [
-      "s3:DeleteBucket", "s3:PutBucketPolicy", "s3:DeleteBucketPolicy",
-      "s3:PutBucketVersioning", "s3:PutLifecycleConfiguration",
-    ]
-    resources = [aws_s3_bucket.state.arn]
-  }
-}
-
-data "aws_iam_policy_document" "image_push" {
-  statement {
-    sid       = "EcrLogin"
-    actions   = ["ecr:GetAuthorizationToken"]
-    resources = ["*"] # does not support resource-level permissions
-  }
-
-  statement {
-    sid = "PushToAppRepository"
-    actions = [
-      "ecr:BatchCheckLayerAvailability",
-      "ecr:InitiateLayerUpload",
-      "ecr:UploadLayerPart",
-      "ecr:CompleteLayerUpload",
-      "ecr:PutImage",
-      "ecr:BatchGetImage",
-      "ecr:DescribeImages",
-      "ecr:DescribeImageScanFindings",
-    ]
-    resources = [aws_ecr_repository.app.arn]
-  }
+  # All write statements of the apply role (used by the tests)
+  apply_write_statements = flatten([for n in ["apply-network", "apply-services", "apply-core"] : jsondecode(local.policies[n]).Statement])
 }
 
 # --- Roles ------------------------------------------------------------------------------------
@@ -300,13 +117,13 @@ resource "aws_iam_role" "plan" {
 resource "aws_iam_role_policy" "plan" {
   name   = "platform-read"
   role   = aws_iam_role.plan.id
-  policy = data.aws_iam_policy_document.platform_read.json
+  policy = local.policies["platform-read"]
 }
 
 resource "aws_iam_role_policy" "plan_store" {
   name   = "saved-plan-write"
   role   = aws_iam_role.plan.id
-  policy = data.aws_iam_policy_document.plan_store_write.json
+  policy = local.policies["plan-store-write"]
 }
 
 resource "aws_iam_role" "image_push" {
@@ -319,7 +136,7 @@ resource "aws_iam_role" "image_push" {
 resource "aws_iam_role_policy" "image_push" {
   name   = "ecr-push"
   role   = aws_iam_role.image_push.id
-  policy = data.aws_iam_policy_document.image_push.json
+  policy = local.policies["image-push"]
 }
 
 resource "aws_iam_role" "apply" {
@@ -332,17 +149,28 @@ resource "aws_iam_role" "apply" {
 resource "aws_iam_role_policy" "apply_read" {
   name   = "platform-read"
   role   = aws_iam_role.apply.id
-  policy = data.aws_iam_policy_document.platform_read.json
+  policy = local.policies["platform-read"]
 }
 
-resource "aws_iam_role_policy" "apply_write" {
-  name   = "platform-write"
-  role   = aws_iam_role.apply.id
-  policy = data.aws_iam_policy_document.platform_write.json
+# Write access is too large for inline policies (IAM caps a role's inline policies at
+# 10,240 characters in total), so it is split into three customer-managed policies of at
+# most 6,144 characters each (ci/tests/test_rendered_policy_gate.py checks both limits).
+# Their names start with "gha-": the apply role is explicitly denied any change to them.
+resource "aws_iam_policy" "apply_write" {
+  for_each    = toset(["apply-network", "apply-services", "apply-core"])
+  name        = "gha-${var.project_name}-${each.key}"
+  description = "Terraform apply permissions (${each.key}) for gha-${var.project_name}-apply"
+  policy      = local.policies[each.key]
+}
+
+resource "aws_iam_role_policy_attachment" "apply_write" {
+  for_each   = aws_iam_policy.apply_write
+  role       = aws_iam_role.apply.name
+  policy_arn = each.value.arn
 }
 
 resource "aws_iam_role_policy" "apply_plan_store" {
   name   = "saved-plan-read"
   role   = aws_iam_role.apply.id
-  policy = data.aws_iam_policy_document.plan_store_read.json
+  policy = local.policies["plan-store-read"]
 }

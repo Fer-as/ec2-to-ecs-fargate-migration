@@ -1,0 +1,31 @@
+Checkov 3.3.26 (bridgecrew/checkov@sha256:8e63f217...dd93), run locally against terraform/ (both roots), 2026-10-25T17:17Z
+Passed checks: 280, Failed checks: 0, Skipped checks: 29
+
+Checks evaluated on the pipeline role policies (templatefile-rendered):
+Check: CKV_AWS_62: "Ensure IAM policies that allow full "*-*" administrative privileges are not created"
+	PASSED for resource: aws_iam_role_policy.plan
+Check: CKV_AWS_63: "Ensure no IAM policies documents allow "*" as a statement's actions"
+	PASSED for resource: aws_iam_role_policy.plan
+Check: CKV_AWS_62: "Ensure IAM policies that allow full "*-*" administrative privileges are not created"
+	PASSED for resource: aws_iam_role_policy.plan_store
+Check: CKV_AWS_63: "Ensure no IAM policies documents allow "*" as a statement's actions"
+	PASSED for resource: aws_iam_role_policy.plan_store
+Check: CKV_AWS_393: "Ensure AWS GitHub Actions OIDC authorization policies only allow safe claims and claim order on IAM role"
+Check: CKV_AWS_62: "Ensure IAM policies that allow full "*-*" administrative privileges are not created"
+	PASSED for resource: aws_iam_role_policy.image_push
+Check: CKV_AWS_63: "Ensure no IAM policies documents allow "*" as a statement's actions"
+	PASSED for resource: aws_iam_role_policy.image_push
+Check: CKV_AWS_393: "Ensure AWS GitHub Actions OIDC authorization policies only allow safe claims and claim order on IAM role"
+Check: CKV_AWS_62: "Ensure IAM policies that allow full "*-*" administrative privileges are not created"
+	PASSED for resource: aws_iam_role_policy.apply_read
+Check: CKV_AWS_63: "Ensure no IAM policies documents allow "*" as a statement's actions"
+	PASSED for resource: aws_iam_role_policy.apply_read
+Check: CKV_AWS_62: "Ensure IAM policies that allow full "*-*" administrative privileges are not created"
+	PASSED for resource: aws_iam_role_policy.apply_write
+Check: CKV_AWS_63: "Ensure no IAM policies documents allow "*" as a statement's actions"
+	PASSED for resource: aws_iam_role_policy.apply_write
+Check: CKV_AWS_62: "Ensure IAM policies that allow full "*-*" administrative privileges are not created"
+	PASSED for resource: aws_iam_role_policy.apply_plan_store
+Check: CKV_AWS_63: "Ensure no IAM policies documents allow "*" as a statement's actions"
+	PASSED for resource: aws_iam_role_policy.apply_plan_store
+Check: CKV_AWS_108: "Ensure IAM policies does not allow data exfiltration"

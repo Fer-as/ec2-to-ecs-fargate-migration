@@ -1,0 +1,66 @@
+# Local shift-left checks: fast, file-level, run on every `git commit`.
+# Install and usage (PowerShell): docs/ci-cd.md, section "Pre-commit hooks".
+#
+# CI runs the same file (ci.yml, lint job) with SKIP=gitleaks,terraform-fmt because CI
+# already runs those more thoroughly (gitleaks over the full git history; terraform fmt
+# in terraform-ci.yml). Expensive scans stay in CI only: Trivy, Checkov, Docker build and
+# smoke test, DynamoDB integration tests, terraform validate/test, actionlint, shellcheck.
+#
+# Hook repositories are pinned to commit SHAs (tag in the comment).
+minimum_pre_commit_version: "4.0.0"
+default_install_hook_types: [pre-commit]
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c # frozen: v6.0.0
+    hooks:
+      # Raw command output kept as evidence must stay byte-for-byte, so formatting hooks
+      # skip evidence/. Secret, private-key, merge-marker and large-file hooks still scan it.
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+        exclude: ^evidence/
+      - id: end-of-file-fixer
+        exclude: ^evidence/
+      - id: mixed-line-ending
+        args: [--fix=lf] # matches .gitattributes (eol=lf)
+        exclude: ^evidence/
+      - id: check-yaml
+      - id: check-json
+        name: check json (incl. IAM policy templates)
+        types: [text]
+        files: \.json(\.tftpl)?$
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: detect-private-key
+      - id: check-added-large-files
+        args: [--maxkb=500, --enforce-all]
+
+  - repo: https://github.com/adrienverge/yamllint
+    rev: cba56bcde1fdd01c1deb3f945e69764c291a6530 # frozen: v1.38.0 (same as ci.yml)
+    hooks:
+      - id: yamllint
+        args: [--strict, -c, .yamllint.yml]
+        files: ^\.github/workflows/
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: f12be1ebaa5351c1fc76472de98db2c3446c8253 # frozen: v0.16.10
+    hooks:
+      - id: ruff-check # rules in ruff.toml; reports only, never rewrites code
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: 83d9cd684c87d95d656c1458ef04895a7f1cbd8e # frozen: v8.30.1 (same as ci.yml)
+    hooks:
+      - id: gitleaks # scans staged changes with .gitleaks.toml (no extra allowlist)
+
+  - repo: local
+    hooks:
+      - id: terraform-fmt
+        name: terraform fmt
+        entry: terraform fmt -diff
+        language: system
+        files: \.(tf|tfvars|tftest\.hcl)$
+      - id: forbid-generated-artefacts
+        name: forbid Terraform state/plans, local tfvars, keys and Python caches
+        entry: These files must never be committed (state, plans, local tfvars, key material, caches)
+        language: fail
+        files: (^|/)(\.terraform/|[^/]*\.tfstate(\.[^/]*)?$|[^/]*\.tfplan$|tfplan$|terraform\.tfvars$|[^/]*\.auto\.tfvars$|\.env$|[^/]*\.(pem|key|p12|pfx)$|id_(rsa|ecdsa|ed25519)$|__pycache__/|[^/]*\.pyc$)

@@ -111,3 +111,19 @@ variable "create_github_oidc_provider" {
   type        = bool
   default     = true
 }
+
+variable "legacy_instance_type" {
+  description = "The only EC2 instance type the apply role may launch (must match the platform's instance_type)."
+  type        = string
+  default     = "t3.micro"
+}
+
+variable "legacy_ami_owner" {
+  description = "AWS account that must own the AMI the apply role launches from (099720109477 = Canonical, Ubuntu)."
+  type        = string
+  default     = "099720109477"
+  validation {
+    condition     = can(regex("^[0-9]{12}$", var.legacy_ami_owner))
+    error_message = "legacy_ami_owner must be a 12-digit AWS account ID."
+  }
+}

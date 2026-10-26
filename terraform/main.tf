@@ -57,6 +57,7 @@ data "aws_ami" "ubuntu" {
 
 # VPC
 resource "aws_vpc" "main" {
+  #checkov:skip=CKV2_AWS_12:Default SG left unmanaged so the apply role needs no rights on untagged security groups; no workload uses it (see docs/security-exceptions.md)
   cidr_block           = "10.0.0.0/16"
   enable_dns_hostnames = true
   enable_dns_support   = true

@@ -1,0 +1,96 @@
+# Final inline IAM policies of the three pipeline roles (rendered by a read-only plan of a scratch
+# copy in which the bucket/ECR ARNs were substituted with their deterministic values). Account redacted.
+
+## aws_iam_role_policy.apply_plan_store  (role <role>, policy 'saved-plan-read')
+  [Allow] ReadSavedPlans
+    actions:   s3:GetObject
+    resources: arn:aws:s3:::legacy-api-tfstate-<ACCOUNT_ID>-eu-west-2/plans/legacy-api/*
+
+## aws_iam_role_policy.apply_read  (role <role>, policy 'platform-read')
+  [Allow] DescribePlatformServices
+    actions:   application-autoscaling:Describe*, cloudwatch:Describe*, cloudwatch:GetDashboard, cloudwatch:ListDashboards, cloudwatch:ListTagsForResource, ec2:Describe*, ecr:DescribeImages, ecr:DescribeRepositories, ecr:ListTagsForResource, ecs:Describe*, ecs:List*, elasticloadbalancing:Describe*, logs:Describe*, logs:ListTagsForResource, logs:ListTagsLogGroup, route53:GetChange, route53:GetHostedZone, route53:ListResourceRecordSets, route53:ListTagsForResource, sns:GetSubscriptionAttributes, sns:GetTopicAttributes, sns:ListSubscriptionsByTopic, sns:ListTagsForResource
+    resources: *
+  [Allow] DescribeAppTable
+    actions:   dynamodb:Describe*, dynamodb:ListTagsOfResource
+    resources: arn:aws:dynamodb:eu-west-2:<ACCOUNT_ID>:table/legacy-api-production
+  [Allow] ReadProjectIam
+    actions:   iam:Get*, iam:List*
+    resources: arn:aws:iam::<ACCOUNT_ID>:role/legacy-api-*, arn:aws:iam::<ACCOUNT_ID>:policy/legacy-api-*, arn:aws:iam::<ACCOUNT_ID>:instance-profile/legacy-api-*
+  [Allow] ReadAppBucket
+    actions:   s3:Get*, s3:List*
+    resources: arn:aws:s3:::legacy-api-app-*
+  [Allow] ListStateBucket
+    actions:   s3:ListBucket
+    resources: arn:aws:s3:::legacy-api-tfstate-<ACCOUNT_ID>-eu-west-2
+  [Allow] ReadState
+    actions:   s3:GetObject
+    resources: arn:aws:s3:::legacy-api-tfstate-<ACCOUNT_ID>-eu-west-2/legacy-api/platform.tfstate
+  [Allow] StateLockFile
+    actions:   s3:DeleteObject, s3:GetObject, s3:PutObject
+    resources: arn:aws:s3:::legacy-api-tfstate-<ACCOUNT_ID>-eu-west-2/legacy-api/platform.tfstate.tflock
+
+## aws_iam_role_policy.apply_write  (role <role>, policy 'platform-write')
+  [Allow] ManagePlatformServicesInRegion
+    actions:   application-autoscaling:*, cloudwatch:*, ec2:*, ecs:*, elasticloadbalancing:*, logs:*, sns:*
+    resources: *
+    condition: {"StringEquals": {"aws:RequestedRegion": "eu-west-2"}}
+  [Allow] ManageAppTableOnly
+    actions:   dynamodb:*
+    resources: arn:aws:dynamodb:eu-west-2:<ACCOUNT_ID>:table/legacy-api-production
+  [Allow] ManageAppBucketOnly
+    actions:   s3:*
+    resources: arn:aws:s3:::legacy-api-app-*
+  [Allow] WriteState
+    actions:   s3:PutObject
+    resources: arn:aws:s3:::legacy-api-tfstate-<ACCOUNT_ID>-eu-west-2/legacy-api/platform.tfstate
+  [Allow] ManageProjectRoles
+    actions:   iam:AddRoleToInstanceProfile, iam:AttachRolePolicy, iam:CreateInstanceProfile, iam:CreateRole, iam:DeleteInstanceProfile, iam:DeleteRole, iam:DeleteRolePolicy, iam:DetachRolePolicy, iam:PutRolePolicy, iam:RemoveRoleFromInstanceProfile, iam:TagInstanceProfile, iam:TagRole, iam:UntagInstanceProfile, iam:UntagRole, iam:UpdateAssumeRolePolicy, iam:UpdateRole
+    resources: arn:aws:iam::<ACCOUNT_ID>:role/legacy-api-*, arn:aws:iam::<ACCOUNT_ID>:instance-profile/legacy-api-*
+  [Allow] PassProjectRolesToKnownServicesOnly
+    actions:   iam:PassRole
+    resources: arn:aws:iam::<ACCOUNT_ID>:role/legacy-api-*
+    condition: {"StringEquals": {"iam:PassedToService": ["ecs-tasks.amazonaws.com", "ec2.amazonaws.com", "vpc-flow-logs.amazonaws.com"]}}
+  [Allow] ServiceLinkedRoles
+    actions:   iam:CreateServiceLinkedRole
+    resources: *
+    condition: {"StringEquals": {"iam:AWSServiceName": ["ecs.amazonaws.com", "elasticloadbalancing.amazonaws.com", "ecs.application-autoscaling.amazonaws.com"]}}
+  [Deny] ProtectBootstrap
+    actions:   s3:DeleteBucket, s3:DeleteBucketPolicy, s3:PutBucketPolicy, s3:PutBucketVersioning, s3:PutLifecycleConfiguration
+    resources: arn:aws:s3:::legacy-api-tfstate-<ACCOUNT_ID>-eu-west-2
+
+## aws_iam_role_policy.image_push  (role <role>, policy 'ecr-push')
+  [Allow] EcrLogin
+    actions:   ecr:GetAuthorizationToken
+    resources: *
+  [Allow] PushToAppRepository
+    actions:   ecr:BatchCheckLayerAvailability, ecr:BatchGetImage, ecr:CompleteLayerUpload, ecr:DescribeImageScanFindings, ecr:DescribeImages, ecr:InitiateLayerUpload, ecr:PutImage, ecr:UploadLayerPart
+    resources: arn:aws:ecr:eu-west-2:<ACCOUNT_ID>:repository/legacy-api
+
+## aws_iam_role_policy.plan  (role <role>, policy 'platform-read')
+  [Allow] DescribePlatformServices
+    actions:   application-autoscaling:Describe*, cloudwatch:Describe*, cloudwatch:GetDashboard, cloudwatch:ListDashboards, cloudwatch:ListTagsForResource, ec2:Describe*, ecr:DescribeImages, ecr:DescribeRepositories, ecr:ListTagsForResource, ecs:Describe*, ecs:List*, elasticloadbalancing:Describe*, logs:Describe*, logs:ListTagsForResource, logs:ListTagsLogGroup, route53:GetChange, route53:GetHostedZone, route53:ListResourceRecordSets, route53:ListTagsForResource, sns:GetSubscriptionAttributes, sns:GetTopicAttributes, sns:ListSubscriptionsByTopic, sns:ListTagsForResource
+    resources: *
+  [Allow] DescribeAppTable
+    actions:   dynamodb:Describe*, dynamodb:ListTagsOfResource
+    resources: arn:aws:dynamodb:eu-west-2:<ACCOUNT_ID>:table/legacy-api-production
+  [Allow] ReadProjectIam
+    actions:   iam:Get*, iam:List*
+    resources: arn:aws:iam::<ACCOUNT_ID>:role/legacy-api-*, arn:aws:iam::<ACCOUNT_ID>:policy/legacy-api-*, arn:aws:iam::<ACCOUNT_ID>:instance-profile/legacy-api-*
+  [Allow] ReadAppBucket
+    actions:   s3:Get*, s3:List*
+    resources: arn:aws:s3:::legacy-api-app-*
+  [Allow] ListStateBucket
+    actions:   s3:ListBucket
+    resources: arn:aws:s3:::legacy-api-tfstate-<ACCOUNT_ID>-eu-west-2
+  [Allow] ReadState
+    actions:   s3:GetObject
+    resources: arn:aws:s3:::legacy-api-tfstate-<ACCOUNT_ID>-eu-west-2/legacy-api/platform.tfstate
+  [Allow] StateLockFile
+    actions:   s3:DeleteObject, s3:GetObject, s3:PutObject
+    resources: arn:aws:s3:::legacy-api-tfstate-<ACCOUNT_ID>-eu-west-2/legacy-api/platform.tfstate.tflock
+
+## aws_iam_role_policy.plan_store  (role <role>, policy 'saved-plan-write')
+  [Allow] WriteSavedPlans
+    actions:   s3:PutObject
+    resources: arn:aws:s3:::legacy-api-tfstate-<ACCOUNT_ID>-eu-west-2/plans/legacy-api/*
+

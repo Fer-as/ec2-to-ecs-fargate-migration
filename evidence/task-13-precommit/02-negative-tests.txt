@@ -1,0 +1,116 @@
+Negative tests (2026-10-25). Temporary fixtures in precommit-negative-test/, staged only for the
+test, then unstaged and deleted. All fixtures were fake: a key header with placeholder text, and a
+random string in GitHub-token format (shown REDACTED by gitleaks). Nothing was committed.
+
+### 1. Bad fixtures staged: pre-commit run --files precommit-negative-test/*
+trim trailing whitespace.................................................................Failed
+- hook id: trailing-whitespace
+- exit code: 1
+- files were modified by this hook
+
+Fixing precommit-negative-test/trailing.txt
+
+fix end of files.........................................................................Passed
+mixed line ending........................................................................Passed
+check yaml...............................................................................Failed
+- hook id: check-yaml
+- exit code: 1
+
+while parsing a flow sequence
+  in "precommit-negative-test/bad.yaml", line 1, column 6
+expected ',' or ']', but got ':'
+  in "precommit-negative-test/bad.yaml", line 2, column 6
+
+check json (incl. IAM policy templates)..................................................Failed
+- hook id: check-json
+- exit code: 1
+
+precommit-negative-test/bad.json: Failed to json decode (Expecting property name enclosed in double quotes: line 1 column 9 (char 8))
+
+check for merge conflicts................................................................Passed
+check for case conflicts.................................................................Passed
+detect private key.......................................................................Failed
+- hook id: detect-private-key
+- exit code: 1
+
+Private key found: precommit-negative-test/fake_key.txt
+
+check for added large files..............................................................Failed
+- hook id: check-added-large-files
+- exit code: 1
+
+precommit-negative-test/large.txt (811 KB) exceeds 500 KB.
+
+yamllint.............................................................(no files to check)Skipped
+ruff check...............................................................................Failed
+- hook id: ruff-check
+- exit code: 1
+
+F821 Undefined name `undefined_name`
+ --> precommit-negative-test\bad.py:1:7
+  |
+1 | print(undefined_name)
+  |       ^^^^^^^^^^^^^^
+
+Found 1 error.
+
+Detect hardcoded secrets.................................................................Failed
+- hook id: gitleaks
+- exit code: 1
+
+○
+    │╲
+    │ ○
+    ○ ░
+    ░    gitleaks
+
+Finding:     github_token = "REDACTED
+Secret:      REDACTED
+RuleID:      github-pat
+Entropy:     4.853056
+File:        precommit-negative-test/fake_token.txt
+Line:        1
+Fingerprint: precommit-negative-test/fake_token.txt:github-pat:1
+
+8:37PM INF 0 commits scanned.
+8:37PM INF scanned ~830237 bytes (830.24 KB) in 1.72s
+8:37PM WRN leaks found: 1
+
+terraform fmt........................................................(no files to check)Skipped
+forbid Terraform state/plans, local tfvars, keys and Python caches.......................Failed
+- hook id: forbid-generated-artefacts
+- exit code: 1
+
+These files must never be committed (state, plans, local tfvars, key material, caches)
+
+precommit-negative-test/plan.tfplan
+
+exit=1
+
+### 2. Same staged files through the INSTALLED git hook (.git/hooks/pre-commit, run directly; no commit)
+Hooks failed: 8
+installed hook exit=1
+
+### 3. Fixtures corrected (valid YAML/JSON, key/token text removed, 1 KB file instead of 811 KB, .tfplan renamed, name defined)
+trim trailing whitespace.................................................................Passed
+fix end of files.........................................................................Passed
+mixed line ending........................................................................Passed
+check yaml...............................................................................Passed
+check json (incl. IAM policy templates)..................................................Passed
+check for merge conflicts................................................................Passed
+check for case conflicts.................................................................Passed
+detect private key.......................................................................Passed
+check for added large files..............................................................Passed
+yamllint.............................................................(no files to check)Skipped
+ruff check...............................................................................Passed
+Detect hardcoded secrets.................................................................Passed
+terraform fmt........................................................(no files to check)Skipped
+forbid Terraform state/plans, local tfvars, keys and Python caches...(no files to check)Skipped
+exit=0
+
+### 4. Installed git hook on the corrected files
+installed hook exit=0
+
+### 5. Cleanup
+git reset -- precommit-negative-test; rm -rf precommit-negative-test
+staged files afterwards: none

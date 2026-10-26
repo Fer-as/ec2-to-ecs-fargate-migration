@@ -1,0 +1,1349 @@
+data.aws_iam_openid_connect_provider.github[0]: Reading...
+data.aws_caller_identity.current: Reading...
+data.aws_partition.current: Reading...
+data.aws_partition.current: Read complete after 0s [id=aws]
+data.aws_caller_identity.current: Read complete after 0s [id=<ACCOUNT_ID>]
+data.aws_iam_openid_connect_provider.github[0]: Read complete after 1s [id=arn:aws:iam::<ACCOUNT_ID>:oidc-provider/token.actions.githubusercontent.com]
+data.aws_iam_policy_document.trust["apply"]: Reading...
+data.aws_iam_policy_document.trust["image_push"]: Reading...
+data.aws_iam_policy_document.trust["plan"]: Reading...
+data.aws_iam_policy_document.trust["image_push"]: Read complete after 0s [id=1881399548]
+data.aws_iam_policy_document.trust["plan"]: Read complete after 0s [id=1881399548]
+data.aws_iam_policy_document.trust["apply"]: Read complete after 0s [id=2251340776]
+
+Terraform used the selected providers to generate the following execution
+plan. Resource actions are indicated with the following symbols:
+  + create
+ <= read (data resources)
+
+Terraform will perform the following actions:
+
+  # data.aws_iam_policy_document.state_tls_only will be read during apply
+  # (config refers to values not yet known)
+ <= data "aws_iam_policy_document" "state_tls_only" {
+      + id            = (known after apply)
+      + json          = (known after apply)
+      + minified_json = (known after apply)
+
+      + statement {
+          + actions   = [
+              + "s3:*",
+            ]
+          + effect    = "Deny"
+          + resources = [
+              + (known after apply),
+              + (known after apply),
+            ]
+          + sid       = "DenyInsecureTransport"
+
+          + condition {
+              + test     = "Bool"
+              + values   = [
+                  + "false",
+                ]
+              + variable = "aws:SecureTransport"
+            }
+
+          + principals {
+              + identifiers = [
+                  + "*",
+                ]
+              + type        = "*"
+            }
+        }
+    }
+
+  # aws_ecr_lifecycle_policy.app will be created
+  + resource "aws_ecr_lifecycle_policy" "app" {
+      + id          = (known after apply)
+      + policy      = jsonencode(
+            {
+              + rules = [
+                  + {
+                      + action       = {
+                          + type = "expire"
+                        }
+                      + description  = "Expire untagged images after 7 days"
+                      + rulePriority = 1
+                      + selection    = {
+                          + countNumber = 7
+                          + countType   = "sinceImagePushed"
+                          + countUnit   = "days"
+                          + tagStatus   = "untagged"
+                        }
+                    },
+                  + {
+                      + action       = {
+                          + type = "expire"
+                        }
+                      + description  = "Keep only the most recent images (rollback window)"
+                      + rulePriority = 2
+                      + selection    = {
+                          + countNumber = 30
+                          + countType   = "imageCountMoreThan"
+                          + tagStatus   = "any"
+                        }
+                    },
+                ]
+            }
+        )
+      + registry_id = (known after apply)
+      + repository  = "legacy-api"
+    }
+
+  # aws_ecr_repository.app will be created
+  + resource "aws_ecr_repository" "app" {
+      + arn                  = (known after apply)
+      + id                   = (known after apply)
+      + image_tag_mutability = "IMMUTABLE"
+      + name                 = "legacy-api"
+      + registry_id          = (known after apply)
+      + repository_url       = (known after apply)
+      + tags_all             = {
+          + "Environment" = "production"
+          + "ManagedBy"   = "Terraform"
+          + "Project"     = "legacy-api"
+          + "Stack"       = "bootstrap"
+        }
+
+      + encryption_configuration {
+          + encryption_type = "AES256"
+          + kms_key         = (known after apply)
+        }
+
+      + image_scanning_configuration {
+          + scan_on_push = true
+        }
+    }
+
+  # aws_iam_role.apply will be created
+  + resource "aws_iam_role" "apply" {
+      + arn                   = (known after apply)
+      + assume_role_policy    = jsonencode(
+            {
+              + Statement = [
+                  + {
+                      + Action    = "sts:AssumeRoleWithWebIdentity"
+                      + Condition = {
+                          + StringEquals = {
+                              + "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
+                              + "token.actions.githubusercontent.com:sub" = "repo:Fer-as@78626961/ec2-to-ecs-fargate-migration@1432997653:environment:production"
+                            }
+                        }
+                      + Effect    = "Allow"
+                      + Principal = {
+                          + Federated = "arn:aws:iam::<ACCOUNT_ID>:oidc-provider/token.actions.githubusercontent.com"
+                        }
+                    },
+                ]
+              + Version   = "2012-10-17"
+            }
+        )
+      + create_date           = (known after apply)
+      + description           = "GitHub Actions: terraform apply for Fer-as/ec2-to-ecs-fargate-migration (environment production)"
+      + force_detach_policies = false
+      + id                    = (known after apply)
+      + managed_policy_arns   = (known after apply)
+      + max_session_duration  = 3600
+      + name                  = "gha-legacy-api-apply"
+      + name_prefix           = (known after apply)
+      + path                  = "/"
+      + tags_all              = {
+          + "Environment" = "production"
+          + "ManagedBy"   = "Terraform"
+          + "Project"     = "legacy-api"
+          + "Stack"       = "bootstrap"
+        }
+      + unique_id             = (known after apply)
+
+      + inline_policy (known after apply)
+    }
+
+  # aws_iam_role.image_push will be created
+  + resource "aws_iam_role" "image_push" {
+      + arn                   = (known after apply)
+      + assume_role_policy    = jsonencode(
+            {
+              + Statement = [
+                  + {
+                      + Action    = "sts:AssumeRoleWithWebIdentity"
+                      + Condition = {
+                          + StringEquals = {
+                              + "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
+                              + "token.actions.githubusercontent.com:sub" = "repo:Fer-as@78626961/ec2-to-ecs-fargate-migration@1432997653:ref:refs/heads/main"
+                            }
+                        }
+                      + Effect    = "Allow"
+                      + Principal = {
+                          + Federated = "arn:aws:iam::<ACCOUNT_ID>:oidc-provider/token.actions.githubusercontent.com"
+                        }
+                    },
+                ]
+              + Version   = "2012-10-17"
+            }
+        )
+      + create_date           = (known after apply)
+      + description           = "GitHub Actions: push images from Fer-as/ec2-to-ecs-fargate-migration main to ECR"
+      + force_detach_policies = false
+      + id                    = (known after apply)
+      + managed_policy_arns   = (known after apply)
+      + max_session_duration  = 3600
+      + name                  = "gha-legacy-api-image-push"
+      + name_prefix           = (known after apply)
+      + path                  = "/"
+      + tags_all              = {
+          + "Environment" = "production"
+          + "ManagedBy"   = "Terraform"
+          + "Project"     = "legacy-api"
+          + "Stack"       = "bootstrap"
+        }
+      + unique_id             = (known after apply)
+
+      + inline_policy (known after apply)
+    }
+
+  # aws_iam_role.plan will be created
+  + resource "aws_iam_role" "plan" {
+      + arn                   = (known after apply)
+      + assume_role_policy    = jsonencode(
+            {
+              + Statement = [
+                  + {
+                      + Action    = "sts:AssumeRoleWithWebIdentity"
+                      + Condition = {
+                          + StringEquals = {
+                              + "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
+                              + "token.actions.githubusercontent.com:sub" = "repo:Fer-as@78626961/ec2-to-ecs-fargate-migration@1432997653:ref:refs/heads/main"
+                            }
+                        }
+                      + Effect    = "Allow"
+                      + Principal = {
+                          + Federated = "arn:aws:iam::<ACCOUNT_ID>:oidc-provider/token.actions.githubusercontent.com"
+                        }
+                    },
+                ]
+              + Version   = "2012-10-17"
+            }
+        )
+      + create_date           = (known after apply)
+      + description           = "GitHub Actions: terraform plan for Fer-as/ec2-to-ecs-fargate-migration main (read + saved plan)"
+      + force_detach_policies = false
+      + id                    = (known after apply)
+      + managed_policy_arns   = (known after apply)
+      + max_session_duration  = 3600
+      + name                  = "gha-legacy-api-plan"
+      + name_prefix           = (known after apply)
+      + path                  = "/"
+      + tags_all              = {
+          + "Environment" = "production"
+          + "ManagedBy"   = "Terraform"
+          + "Project"     = "legacy-api"
+          + "Stack"       = "bootstrap"
+        }
+      + unique_id             = (known after apply)
+
+      + inline_policy (known after apply)
+    }
+
+  # aws_iam_role_policy.apply_plan_store will be created
+  + resource "aws_iam_role_policy" "apply_plan_store" {
+      + id          = (known after apply)
+      + name        = "saved-plan-read"
+      + name_prefix = (known after apply)
+      + policy      = jsonencode(
+            {
+              + Statement = [
+                  + {
+                      + Action   = "s3:GetObject"
+                      + Effect   = "Allow"
+                      + Resource = "arn:aws:s3:::legacy-api-tfstate-<ACCOUNT_ID>-eu-west-2/plans/legacy-api/*"
+                      + Sid      = "ReadSavedPlans"
+                    },
+                ]
+              + Version   = "2012-10-17"
+            }
+        )
+      + role        = (known after apply)
+    }
+
+  # aws_iam_role_policy.apply_read will be created
+  + resource "aws_iam_role_policy" "apply_read" {
+      + id          = (known after apply)
+      + name        = "platform-read"
+      + name_prefix = (known after apply)
+      + policy      = jsonencode(
+            {
+              + Statement = [
+                  + {
+                      + Action   = [
+                          + "ec2:Describe*",
+                          + "elasticloadbalancing:Describe*",
+                          + "ecs:Describe*",
+                          + "ecs:List*",
+                          + "application-autoscaling:Describe*",
+                          + "cloudwatch:Describe*",
+                          + "cloudwatch:GetDashboard",
+                          + "cloudwatch:ListDashboards",
+                          + "cloudwatch:ListTagsForResource",
+                          + "logs:Describe*",
+                          + "logs:ListTagsForResource",
+                          + "logs:ListTagsLogGroup",
+                          + "sns:GetTopicAttributes",
+                          + "sns:GetSubscriptionAttributes",
+                          + "sns:ListSubscriptionsByTopic",
+                          + "sns:ListTagsForResource",
+                          + "ecr:DescribeRepositories",
+                          + "ecr:DescribeImages",
+                          + "ecr:ListTagsForResource",
+                          + "route53:GetHostedZone",
+                          + "route53:GetChange",
+                          + "route53:ListResourceRecordSets",
+                          + "route53:ListTagsForResource",
+                        ]
+                      + Effect   = "Allow"
+                      + Resource = "*"
+                      + Sid      = "DescribePlatformServices"
+                    },
+                  + {
+                      + Action   = [
+                          + "dynamodb:Describe*",
+                          + "dynamodb:ListTagsOfResource",
+                        ]
+                      + Effect   = "Allow"
+                      + Resource = "arn:aws:dynamodb:eu-west-2:<ACCOUNT_ID>:table/legacy-api-production"
+                      + Sid      = "DescribeAppTable"
+                    },
+                  + {
+                      + Action   = [
+                          + "iam:Get*",
+                          + "iam:List*",
+                        ]
+                      + Effect   = "Allow"
+                      + Resource = [
+                          + "arn:aws:iam::<ACCOUNT_ID>:role/legacy-api-*",
+                          + "arn:aws:iam::<ACCOUNT_ID>:instance-profile/legacy-api-*",
+                          + "arn:aws:iam::<ACCOUNT_ID>:policy/legacy-api-*",
+                        ]
+                      + Sid      = "ReadProjectIam"
+                    },
+                  + {
+                      + Action   = [
+                          + "s3:Get*",
+                          + "s3:List*",
+                        ]
+                      + Effect   = "Allow"
+                      + Resource = "arn:aws:s3:::legacy-api-app-*"
+                      + Sid      = "ReadAppBucket"
+                    },
+                  + {
+                      + Action   = "s3:ListBucket"
+                      + Effect   = "Allow"
+                      + Resource = "arn:aws:s3:::legacy-api-tfstate-<ACCOUNT_ID>-eu-west-2"
+                      + Sid      = "ListStateBucket"
+                    },
+                  + {
+                      + Action   = "s3:GetObject"
+                      + Effect   = "Allow"
+                      + Resource = "arn:aws:s3:::legacy-api-tfstate-<ACCOUNT_ID>-eu-west-2/legacy-api/platform.tfstate"
+                      + Sid      = "ReadState"
+                    },
+                  + {
+                      + Action   = [
+                          + "s3:GetObject",
+                          + "s3:PutObject",
+                          + "s3:DeleteObject",
+                        ]
+                      + Effect   = "Allow"
+                      + Resource = "arn:aws:s3:::legacy-api-tfstate-<ACCOUNT_ID>-eu-west-2/legacy-api/platform.tfstate.tflock"
+                      + Sid      = "StateLockFile"
+                    },
+                ]
+              + Version   = "2012-10-17"
+            }
+        )
+      + role        = (known after apply)
+    }
+
+  # aws_iam_role_policy.apply_write will be created
+  + resource "aws_iam_role_policy" "apply_write" {
+      + id          = (known after apply)
+      + name        = "platform-write"
+      + name_prefix = (known after apply)
+      + policy      = jsonencode(
+            {
+              + Statement = [
+                  + {
+                      + Action    = "ec2:CreateVpc"
+                      + Condition = {
+                          + StringEquals = {
+                              + "aws:RequestTag/Project" = "legacy-api"
+                            }
+                        }
+                      + Effect    = "Allow"
+                      + Resource  = "arn:aws:ec2:eu-west-2:<ACCOUNT_ID>:vpc/*"
+                      + Sid       = "Ec2CreateVpcTagged"
+                    },
+                  + {
+                      + Action    = "ec2:CreateSubnet"
+                      + Condition = {
+                          + StringEquals = {
+                              + "aws:RequestTag/Project" = "legacy-api"
+                            }
+                        }
+                      + Effect    = "Allow"
+                      + Resource  = "arn:aws:ec2:eu-west-2:<ACCOUNT_ID>:subnet/*"
+                      + Sid       = "Ec2CreateSubnetTagged"
+                    },
+                  + {
+                      + Action    = "ec2:CreateRouteTable"
+                      + Condition = {
+                          + StringEquals = {
+                              + "aws:RequestTag/Project" = "legacy-api"
+                            }
+                        }
+                      + Effect    = "Allow"
+                      + Resource  = "arn:aws:ec2:eu-west-2:<ACCOUNT_ID>:route-table/*"
+                      + Sid       = "Ec2CreateRouteTableTagged"
+                    },
+                  + {
+                      + Action    = "ec2:CreateSecurityGroup"
+                      + Condition = {
+                          + StringEquals = {
+                              + "aws:RequestTag/Project" = "legacy-api"
+                            }
+                        }
+                      + Effect    = "Allow"
+                      + Resource  = "arn:aws:ec2:eu-west-2:<ACCOUNT_ID>:security-group/*"
+                      + Sid       = "Ec2CreateSecurityGroupTagged"
+                    },
+                  + {
+                      + Action    = "ec2:AllocateAddress"
+                      + Condition = {
+                          + StringEquals = {
+                              + "aws:RequestTag/Project" = "legacy-api"
+                            }
+                        }
+                      + Effect    = "Allow"
+                      + Resource  = "arn:aws:ec2:eu-west-2:<ACCOUNT_ID>:elastic-ip/*"
+                      + Sid       = "Ec2AllocateAddressTagged"
+                    },
+                  + {
+                      + Action    = [
+                          + "ec2:CreateInternetGateway",
+                          + "ec2:CreateNatGateway",
+                          + "ec2:CreateVpcEndpoint",
+                          + "ec2:CreateFlowLogs",
+                        ]
+                      + Condition = {
+                          + StringEquals = {
+                              + "aws:RequestTag/Project" = "legacy-api"
+                            }
+                        }
+                      + Effect    = "Allow"
+                      + Resource  = [
+                          + "arn:aws:ec2:eu-west-2:<ACCOUNT_ID>:internet-gateway/*",
+                          + "arn:aws:ec2:eu-west-2:<ACCOUNT_ID>:natgateway/*",
+                          + "arn:aws:ec2:eu-west-2:<ACCOUNT_ID>:vpc-endpoint/*",
+                          + "arn:aws:ec2:eu-west-2:<ACCOUNT_ID>:vpc-flow-log/*",
+                        ]
+                      + Sid       = "Ec2CreateLeafResourcesTagged"
+                    },
+                  + {
+                      + Action    = "ec2:RunInstances"
+                      + Condition = {
+                          + StringEquals = {
+                              + "aws:RequestTag/Project" = "legacy-api"
+                              + "ec2:InstanceType"       = "t3.micro"
+                              + "ec2:MetadataHttpTokens" = "required"
+                            }
+                        }
+                      + Effect    = "Allow"
+                      + Resource  = "arn:aws:ec2:eu-west-2:<ACCOUNT_ID>:instance/*"
+                      + Sid       = "Ec2RunLegacyInstanceOnly"
+                    },
+                  + {
+                      + Action    = "ec2:RunInstances"
+                      + Condition = {
+                          + StringEquals = {
+                              + "ec2:Owner" = "099720109477"
+                            }
+                        }
+                      + Effect    = "Allow"
+                      + Resource  = [
+                          + "arn:aws:ec2:eu-west-2::image/*",
+                          + "arn:aws:ec2:eu-west-2::snapshot/*",
+                        ]
+                      + Sid       = "Ec2RunFromCanonicalUbuntuOnly"
+                    },
+                  + {
+                      + Action   = [
+                          + "ec2:RunInstances",
+                          + "ec2:AssociateAddress",
+                          + "ec2:DisassociateAddress",
+                          + "ec2:ModifyInstanceAttribute",
+                          + "ec2:AuthorizeSecurityGroupIngress",
+                          + "ec2:AuthorizeSecurityGroupEgress",
+                          + "ec2:ModifySecurityGroupRules",
+                        ]
+                      + Effect   = "Allow"
+                      + Resource = [
+                          + "arn:aws:ec2:eu-west-2:<ACCOUNT_ID>:volume/*",
+                          + "arn:aws:ec2:eu-west-2:<ACCOUNT_ID>:network-interface/*",
+                          + "arn:aws:ec2:eu-west-2:<ACCOUNT_ID>:security-group-rule/*",
+                        ]
+                      + Sid      = "Ec2ChildResourcesOfCheckedParents"
+                    },
+                  + {
+                      + Action    = [
+                          + "ec2:CreateSubnet",
+                          + "ec2:CreateRouteTable",
+                          + "ec2:CreateSecurityGroup",
+                          + "ec2:CreateNatGateway",
+                          + "ec2:CreateVpcEndpoint",
+                          + "ec2:CreateFlowLogs",
+                          + "ec2:RunInstances",
+                          + "ec2:ModifyVpcAttribute",
+                          + "ec2:DeleteVpc",
+                          + "ec2:ModifySubnetAttribute",
+                          + "ec2:DeleteSubnet",
+                          + "ec2:AttachInternetGateway",
+                          + "ec2:DetachInternetGateway",
+                          + "ec2:DeleteInternetGateway",
+                          + "ec2:CreateRoute",
+                          + "ec2:ReplaceRoute",
+                          + "ec2:DeleteRoute",
+                          + "ec2:AssociateRouteTable",
+                          + "ec2:DisassociateRouteTable",
+                          + "ec2:DeleteRouteTable",
+                          + "ec2:AuthorizeSecurityGroupIngress",
+                          + "ec2:AuthorizeSecurityGroupEgress",
+                          + "ec2:RevokeSecurityGroupIngress",
+                          + "ec2:RevokeSecurityGroupEgress",
+                          + "ec2:ModifySecurityGroupRules",
+                          + "ec2:UpdateSecurityGroupRuleDescriptionsIngress",
+                          + "ec2:UpdateSecurityGroupRuleDescriptionsEgress",
+                          + "ec2:DeleteSecurityGroup",
+                          + "ec2:AssociateAddress",
+                          + "ec2:DisassociateAddress",
+                          + "ec2:ReleaseAddress",
+                          + "ec2:DeleteNatGateway",
+                          + "ec2:ModifyVpcEndpoint",
+                          + "ec2:DeleteVpcEndpoints",
+                          + "ec2:DeleteFlowLogs",
+                          + "ec2:TerminateInstances",
+                          + "ec2:StopInstances",
+                          + "ec2:StartInstances",
+                          + "ec2:ModifyInstanceAttribute",
+                          + "ec2:ModifyInstanceMetadataOptions",
+                          + "ec2:AssociateIamInstanceProfile",
+                          + "ec2:ReplaceIamInstanceProfileAssociation",
+                          + "ec2:DisassociateIamInstanceProfile",
+                          + "ec2:MonitorInstances",
+                          + "ec2:UnmonitorInstances",
+                        ]
+                      + Condition = {
+                          + StringEquals = {
+                              + "aws:ResourceTag/Project" = "legacy-api"
+                            }
+                        }
+                      + Effect    = "Allow"
+                      + Resource  = [
+                          + "arn:aws:ec2:eu-west-2:<ACCOUNT_ID>:vpc/*",
+                          + "arn:aws:ec2:eu-west-2:<ACCOUNT_ID>:subnet/*",
+                          + "arn:aws:ec2:eu-west-2:<ACCOUNT_ID>:internet-gateway/*",
+                          + "arn:aws:ec2:eu-west-2:<ACCOUNT_ID>:route-table/*",
+                          + "arn:aws:ec2:eu-west-2:<ACCOUNT_ID>:security-group/*",
+                          + "arn:aws:ec2:eu-west-2:<ACCOUNT_ID>:elastic-ip/*",
+                          + "arn:aws:ec2:eu-west-2:<ACCOUNT_ID>:natgateway/*",
+                          + "arn:aws:ec2:eu-west-2:<ACCOUNT_ID>:vpc-endpoint/*",
+                          + "arn:aws:ec2:eu-west-2:<ACCOUNT_ID>:vpc-flow-log/*",
+                          + "arn:aws:ec2:eu-west-2:<ACCOUNT_ID>:instance/*",
+                        ]
+                      + Sid       = "Ec2ManageProjectTaggedResources"
+                    },
+                  + {
+                      + Action    = [
+                          + "ec2:RevokeSecurityGroupIngress",
+                          + "ec2:RevokeSecurityGroupEgress",
+                          + "ec2:AuthorizeSecurityGroupIngress",
+                          + "ec2:AuthorizeSecurityGroupEgress",
+                        ]
+                      + Condition = {
+                          + Null = {
+                              + "aws:ResourceTag/Project" = "true"
+                            }
+                        }
+                      + Effect    = "Allow"
+                      + Resource  = "arn:aws:ec2:eu-west-2:<ACCOUNT_ID>:security-group/*"
+                      + Sid       = "Ec2AdoptUntaggedVpcDefaultSecurityGroup"
+                    },
+                  + {
+                      + Action    = "ec2:CreateTags"
+                      + Condition = {
+                          + Null         = {
+                              + "aws:ResourceTag/Project" = "true"
+                            }
+                          + StringEquals = {
+                              + "aws:RequestTag/Project" = "legacy-api"
+                            }
+                        }
+                      + Effect    = "Allow"
+                      + Resource  = "arn:aws:ec2:eu-west-2:<ACCOUNT_ID>:security-group/*"
+                      + Sid       = "Ec2TagUntaggedVpcDefaultSecurityGroup"
+                    },
+                  + {
+                      + Action    = "ec2:CreateTags"
+                      + Condition = {
+                          + StringEquals = {
+                              + "ec2:CreateAction" = [
+                                  + "CreateVpc",
+                                  + "CreateSubnet",
+                                  + "CreateInternetGateway",
+                                  + "CreateRouteTable",
+                                  + "CreateSecurityGroup",
+                                  + "AllocateAddress",
+                                  + "CreateNatGateway",
+                                  + "CreateVpcEndpoint",
+                                  + "CreateFlowLogs",
+                                  + "RunInstances",
+                                  + "AuthorizeSecurityGroupIngress",
+                                  + "AuthorizeSecurityGroupEgress",
+                                ]
+                            }
+                        }
+                      + Effect    = "Allow"
+                      + Resource  = "arn:aws:ec2:eu-west-2:<ACCOUNT_ID>:*/*"
+                      + Sid       = "Ec2TagOnCreate"
+                    },
+                  + {
+                      + Action    = "ec2:CreateTags"
+                      + Condition = {
+                          + StringEquals         = {
+                              + "aws:ResourceTag/Project" = "legacy-api"
+                            }
+                          + StringEqualsIfExists = {
+                              + "aws:RequestTag/Project" = "legacy-api"
+                            }
+                        }
+                      + Effect    = "Allow"
+                      + Resource  = "arn:aws:ec2:eu-west-2:<ACCOUNT_ID>:*/*"
+                      + Sid       = "Ec2RetagProjectResources"
+                    },
+                  + {
+                      + Action    = "ec2:DeleteTags"
+                      + Condition = {
+                          + "ForAllValues:StringNotEquals" = {
+                              + "aws:TagKeys" = [
+                                  + "Project",
+                                ]
+                            }
+                          + Null                           = {
+                              + "aws:TagKeys" = "false"
+                            }
+                          + StringEquals                   = {
+                              + "aws:ResourceTag/Project" = "legacy-api"
+                            }
+                        }
+                      + Effect    = "Allow"
+                      + Resource  = "arn:aws:ec2:eu-west-2:<ACCOUNT_ID>:*/*"
+                      + Sid       = "Ec2UntagProjectResourcesKeepProjectTag"
+                    },
+                  + {
+                      + Action    = [
+                          + "elasticloadbalancing:CreateLoadBalancer",
+                          + "elasticloadbalancing:CreateTargetGroup",
+                        ]
+                      + Condition = {
+                          + StringEquals = {
+                              + "aws:RequestTag/Project" = "legacy-api"
+                            }
+                        }
+                      + Effect    = "Allow"
+                      + Resource  = [
+                          + "arn:aws:elasticloadbalancing:eu-west-2:<ACCOUNT_ID>:loadbalancer/app/legacy-api-*/*",
+                          + "arn:aws:elasticloadbalancing:eu-west-2:<ACCOUNT_ID>:targetgroup/legacy-api-*/*",
+                        ]
+                      + Sid       = "ElbCreateProjectTagged"
+                    },
+                  + {
+                      + Action   = [
+                          + "elasticloadbalancing:AddTags",
+                          + "elasticloadbalancing:RemoveTags",
+                          + "elasticloadbalancing:ModifyLoadBalancerAttributes",
+                          + "elasticloadbalancing:SetSecurityGroups",
+                          + "elasticloadbalancing:SetSubnets",
+                          + "elasticloadbalancing:DeleteLoadBalancer",
+                          + "elasticloadbalancing:ModifyTargetGroup",
+                          + "elasticloadbalancing:ModifyTargetGroupAttributes",
+                          + "elasticloadbalancing:DeleteTargetGroup",
+                          + "elasticloadbalancing:RegisterTargets",
+                          + "elasticloadbalancing:DeregisterTargets",
+                          + "elasticloadbalancing:CreateListener",
+                          + "elasticloadbalancing:ModifyListener",
+                          + "elasticloadbalancing:ModifyListenerAttributes",
+                          + "elasticloadbalancing:DeleteListener",
+                          + "elasticloadbalancing:CreateRule",
+                          + "elasticloadbalancing:ModifyRule",
+                          + "elasticloadbalancing:DeleteRule",
+                          + "elasticloadbalancing:SetRulePriorities",
+                        ]
+                      + Effect   = "Allow"
+                      + Resource = [
+                          + "arn:aws:elasticloadbalancing:eu-west-2:<ACCOUNT_ID>:loadbalancer/app/legacy-api-*/*",
+                          + "arn:aws:elasticloadbalancing:eu-west-2:<ACCOUNT_ID>:listener/app/legacy-api-*/*",
+                          + "arn:aws:elasticloadbalancing:eu-west-2:<ACCOUNT_ID>:listener-rule/app/legacy-api-*/*",
+                          + "arn:aws:elasticloadbalancing:eu-west-2:<ACCOUNT_ID>:targetgroup/legacy-api-*/*",
+                        ]
+                      + Sid      = "ElbManageProjectResources"
+                    },
+                  + {
+                      + Action    = [
+                          + "ecs:CreateCluster",
+                          + "ecs:RegisterTaskDefinition",
+                          + "ecs:CreateService",
+                        ]
+                      + Condition = {
+                          + StringEquals = {
+                              + "aws:RequestTag/Project" = "legacy-api"
+                            }
+                        }
+                      + Effect    = "Allow"
+                      + Resource  = [
+                          + "arn:aws:ecs:eu-west-2:<ACCOUNT_ID>:cluster/legacy-api-*",
+                          + "arn:aws:ecs:eu-west-2:<ACCOUNT_ID>:task-definition/legacy-api-*:*",
+                          + "arn:aws:ecs:eu-west-2:<ACCOUNT_ID>:service/legacy-api-*/legacy-api-*",
+                        ]
+                      + Sid       = "EcsCreateProjectTagged"
+                    },
+                  + {
+                      + Action   = [
+                          + "ecs:DeleteCluster",
+                          + "ecs:UpdateCluster",
+                          + "ecs:UpdateClusterSettings",
+                          + "ecs:PutClusterCapacityProviders",
+                          + "ecs:UpdateService",
+                          + "ecs:DeleteService",
+                          + "ecs:TagResource",
+                          + "ecs:UntagResource",
+                        ]
+                      + Effect   = "Allow"
+                      + Resource = [
+                          + "arn:aws:ecs:eu-west-2:<ACCOUNT_ID>:cluster/legacy-api-*",
+                          + "arn:aws:ecs:eu-west-2:<ACCOUNT_ID>:task-definition/legacy-api-*:*",
+                          + "arn:aws:ecs:eu-west-2:<ACCOUNT_ID>:service/legacy-api-*/legacy-api-*",
+                        ]
+                      + Sid      = "EcsManageProjectResources"
+                    },
+                  + {
+                      + Action   = "ecs:DeregisterTaskDefinition"
+                      + Effect   = "Allow"
+                      + Resource = "*"
+                      + Sid      = "EcsDeregisterTaskDefinitionNoResourceLevel"
+                    },
+                  + {
+                      + Action    = [
+                          + "application-autoscaling:RegisterScalableTarget",
+                          + "application-autoscaling:DeregisterScalableTarget",
+                          + "application-autoscaling:PutScalingPolicy",
+                          + "application-autoscaling:DeleteScalingPolicy",
+                        ]
+                      + Condition = {
+                          + StringEquals = {
+                              + "application-autoscaling:scalable-dimension" = "ecs:service:DesiredCount"
+                              + "application-autoscaling:service-namespace"  = "ecs"
+                            }
+                        }
+                      + Effect    = "Allow"
+                      + Resource  = "arn:aws:application-autoscaling:eu-west-2:<ACCOUNT_ID>:scalable-target/*"
+                      + Sid       = "AppAutoScalingEcsServiceDesiredCountOnly"
+                    },
+                  + {
+                      + Action   = [
+                          + "application-autoscaling:TagResource",
+                          + "application-autoscaling:UntagResource",
+                        ]
+                      + Effect   = "Allow"
+                      + Resource = "arn:aws:application-autoscaling:eu-west-2:<ACCOUNT_ID>:scalable-target/*"
+                      + Sid      = "AppAutoScalingTags"
+                    },
+                  + {
+                      + Action    = "cloudwatch:PutMetricAlarm"
+                      + Condition = {
+                          + "ForAllValues:StringLike" = {
+                              + "cloudwatch:AlarmActions" = [
+                                  + "arn:aws:sns:eu-west-2:<ACCOUNT_ID>:legacy-api-*",
+                                  + "arn:aws:autoscaling:eu-west-2:<ACCOUNT_ID>:scalingPolicy:*",
+                                ]
+                            }
+                        }
+                      + Effect    = "Allow"
+                      + Resource  = [
+                          + "arn:aws:cloudwatch:eu-west-2:<ACCOUNT_ID>:alarm:legacy-api-*",
+                          + "arn:aws:cloudwatch:eu-west-2:<ACCOUNT_ID>:alarm:TargetTracking-service/legacy-api-*",
+                        ]
+                      + Sid       = "CloudWatchProjectAlarmsWithProjectActionsOnly"
+                    },
+                  + {
+                      + Action   = [
+                          + "cloudwatch:DeleteAlarms",
+                          + "cloudwatch:TagResource",
+                          + "cloudwatch:UntagResource",
+                          + "cloudwatch:PutDashboard",
+                          + "cloudwatch:DeleteDashboards",
+                        ]
+                      + Effect   = "Allow"
+                      + Resource = [
+                          + "arn:aws:cloudwatch:eu-west-2:<ACCOUNT_ID>:alarm:legacy-api-*",
+                          + "arn:aws:cloudwatch:eu-west-2:<ACCOUNT_ID>:alarm:TargetTracking-service/legacy-api-*",
+                          + "arn:aws:cloudwatch::<ACCOUNT_ID>:dashboard/legacy-api-*",
+                        ]
+                      + Sid      = "CloudWatchManageProjectAlarmsAndDashboards"
+                    },
+                  + {
+                      + Action    = "logs:CreateLogGroup"
+                      + Condition = {
+                          + StringEquals = {
+                              + "aws:RequestTag/Project" = "legacy-api"
+                            }
+                        }
+                      + Effect    = "Allow"
+                      + Resource  = [
+                          + "arn:aws:logs:eu-west-2:<ACCOUNT_ID>:log-group:/ecs/legacy-api-*",
+                          + "arn:aws:logs:eu-west-2:<ACCOUNT_ID>:log-group:/vpc/legacy-api-*",
+                        ]
+                      + Sid       = "LogsCreateProjectGroupsTagged"
+                    },
+                  + {
+                      + Action   = [
+                          + "logs:DeleteLogGroup",
+                          + "logs:PutRetentionPolicy",
+                          + "logs:DeleteRetentionPolicy",
+                          + "logs:TagResource",
+                          + "logs:UntagResource",
+                          + "logs:TagLogGroup",
+                          + "logs:UntagLogGroup",
+                        ]
+                      + Effect   = "Allow"
+                      + Resource = [
+                          + "arn:aws:logs:eu-west-2:<ACCOUNT_ID>:log-group:/ecs/legacy-api-*",
+                          + "arn:aws:logs:eu-west-2:<ACCOUNT_ID>:log-group:/vpc/legacy-api-*",
+                        ]
+                      + Sid      = "LogsManageProjectGroups"
+                    },
+                  + {
+                      + Action    = "sns:CreateTopic"
+                      + Condition = {
+                          + StringEquals = {
+                              + "aws:RequestTag/Project" = "legacy-api"
+                            }
+                        }
+                      + Effect    = "Allow"
+                      + Resource  = "arn:aws:sns:eu-west-2:<ACCOUNT_ID>:legacy-api-*"
+                      + Sid       = "SnsCreateProjectTopicTagged"
+                    },
+                  + {
+                      + Action   = [
+                          + "sns:DeleteTopic",
+                          + "sns:SetTopicAttributes",
+                          + "sns:GetTopicAttributes",
+                          + "sns:Unsubscribe",
+                          + "sns:TagResource",
+                          + "sns:UntagResource",
+                          + "sns:GetSubscriptionAttributes",
+                          + "sns:SetSubscriptionAttributes",
+                        ]
+                      + Effect   = "Allow"
+                      + Resource = "arn:aws:sns:eu-west-2:<ACCOUNT_ID>:legacy-api-*"
+                      + Sid      = "SnsManageProjectTopic"
+                    },
+                  + {
+                      + Action    = "sns:Subscribe"
+                      + Condition = {
+                          + StringEquals = {
+                              + "sns:Protocol" = "email"
+                            }
+                        }
+                      + Effect    = "Allow"
+                      + Resource  = "arn:aws:sns:eu-west-2:<ACCOUNT_ID>:legacy-api-*"
+                      + Sid       = "SnsEmailSubscriptionsOnly"
+                    },
+                  + {
+                      + Action   = "dynamodb:*"
+                      + Effect   = "Allow"
+                      + Resource = "arn:aws:dynamodb:eu-west-2:<ACCOUNT_ID>:table/legacy-api-production"
+                      + Sid      = "ManageAppTableOnly"
+                    },
+                  + {
+                      + Action   = "s3:*"
+                      + Effect   = "Allow"
+                      + Resource = "arn:aws:s3:::legacy-api-app-*"
+                      + Sid      = "ManageAppBucketOnly"
+                    },
+                  + {
+                      + Action   = "s3:PutObject"
+                      + Effect   = "Allow"
+                      + Resource = "arn:aws:s3:::legacy-api-tfstate-<ACCOUNT_ID>-eu-west-2/legacy-api/platform.tfstate"
+                      + Sid      = "WriteState"
+                    },
+                  + {
+                      + Action   = [
+                          + "iam:CreateRole",
+                          + "iam:DeleteRole",
+                          + "iam:UpdateRole",
+                          + "iam:UpdateAssumeRolePolicy",
+                          + "iam:TagRole",
+                          + "iam:UntagRole",
+                          + "iam:PutRolePolicy",
+                          + "iam:DeleteRolePolicy",
+                          + "iam:CreateInstanceProfile",
+                          + "iam:DeleteInstanceProfile",
+                          + "iam:AddRoleToInstanceProfile",
+                          + "iam:RemoveRoleFromInstanceProfile",
+                          + "iam:TagInstanceProfile",
+                          + "iam:UntagInstanceProfile",
+                        ]
+                      + Effect   = "Allow"
+                      + Resource = [
+                          + "arn:aws:iam::<ACCOUNT_ID>:role/legacy-api-*",
+                          + "arn:aws:iam::<ACCOUNT_ID>:instance-profile/legacy-api-*",
+                        ]
+                      + Sid      = "ManageProjectRoles"
+                    },
+                  + {
+                      + Action    = "iam:PassRole"
+                      + Condition = {
+                          + StringEquals = {
+                              + "iam:PassedToService" = [
+                                  + "ecs-tasks.amazonaws.com",
+                                  + "ec2.amazonaws.com",
+                                  + "vpc-flow-logs.amazonaws.com",
+                                ]
+                            }
+                        }
+                      + Effect    = "Allow"
+                      + Resource  = "arn:aws:iam::<ACCOUNT_ID>:role/legacy-api-*"
+                      + Sid       = "PassProjectRolesToKnownServicesOnly"
+                    },
+                  + {
+                      + Action    = "iam:CreateServiceLinkedRole"
+                      + Condition = {
+                          + StringEquals = {
+                              + "iam:AWSServiceName" = [
+                                  + "ecs.amazonaws.com",
+                                  + "elasticloadbalancing.amazonaws.com",
+                                  + "ecs.application-autoscaling.amazonaws.com",
+                                ]
+                            }
+                        }
+                      + Effect    = "Allow"
+                      + Resource  = "*"
+                      + Sid       = "ServiceLinkedRoles"
+                    },
+                  + {
+                      + Action    = [
+                          + "ec2:*",
+                          + "ecs:*",
+                          + "elasticloadbalancing:*",
+                          + "application-autoscaling:*",
+                          + "cloudwatch:*",
+                          + "logs:*",
+                          + "sns:*",
+                          + "dynamodb:*",
+                        ]
+                      + Condition = {
+                          + StringNotEquals = {
+                              + "aws:RequestedRegion" = "eu-west-2"
+                            }
+                        }
+                      + Effect    = "Deny"
+                      + Resource  = "*"
+                      + Sid       = "DenyOutsideApprovedRegion"
+                    },
+                  + {
+                      + Action   = [
+                          + "ec2:ModifySnapshotAttribute",
+                          + "ec2:ModifyImageAttribute",
+                          + "ec2:CreateKeyPair",
+                          + "ec2:ImportKeyPair",
+                          + "ec2:CreateSnapshot",
+                          + "ec2:CreateSnapshots",
+                          + "ec2:CopySnapshot",
+                          + "ec2:CreateImage",
+                          + "ec2:CopyImage",
+                          + "ec2:ExportImage",
+                          + "ec2:CreateInstanceExportTask",
+                          + "ec2:GetPasswordData",
+                          + "ec2:EnableSerialConsoleAccess",
+                          + "ec2:*VpcPeeringConnection*",
+                          + "ec2:*TransitGateway*",
+                          + "ec2:*VpnConnection*",
+                          + "ec2:*VpnGateway*",
+                          + "ec2:*CustomerGateway*",
+                          + "ec2:*ClientVpn*",
+                        ]
+                      + Effect   = "Deny"
+                      + Resource = "*"
+                      + Sid      = "DenyDataSharingAndUnrelatedNetworking"
+                    },
+                  + {
+                      + Action    = "ec2:ModifyInstanceAttribute"
+                      + Condition = {
+                          + Null            = {
+                              + "ec2:Attribute/InstanceType" = "false"
+                            }
+                          + StringNotEquals = {
+                              + "ec2:Attribute/InstanceType" = "t3.micro"
+                            }
+                        }
+                      + Effect    = "Deny"
+                      + Resource  = "*"
+                      + Sid       = "DenyInstanceTypeChange"
+                    },
+                  + {
+                      + Action   = "iam:*"
+                      + Effect   = "Deny"
+                      + Resource = [
+                          + "arn:aws:iam::<ACCOUNT_ID>:role/gha-*",
+                          + "arn:aws:iam::<ACCOUNT_ID>:oidc-provider/*",
+                        ]
+                      + Sid      = "DenyPipelineIdentityChanges"
+                    },
+                  + {
+                      + Action   = [
+                          + "s3:DeleteBucket",
+                          + "s3:PutBucketPolicy",
+                          + "s3:DeleteBucketPolicy",
+                          + "s3:PutBucketVersioning",
+                          + "s3:PutLifecycleConfiguration",
+                        ]
+                      + Effect   = "Deny"
+                      + Resource = "arn:aws:s3:::legacy-api-tfstate-<ACCOUNT_ID>-eu-west-2"
+                      + Sid      = "ProtectBootstrap"
+                    },
+                ]
+              + Version   = "2012-10-17"
+            }
+        )
+      + role        = (known after apply)
+    }
+
+  # aws_iam_role_policy.image_push will be created
+  + resource "aws_iam_role_policy" "image_push" {
+      + id          = (known after apply)
+      + name        = "ecr-push"
+      + name_prefix = (known after apply)
+      + policy      = jsonencode(
+            {
+              + Statement = [
+                  + {
+                      + Action   = "ecr:GetAuthorizationToken"
+                      + Effect   = "Allow"
+                      + Resource = "*"
+                      + Sid      = "EcrLogin"
+                    },
+                  + {
+                      + Action   = [
+                          + "ecr:BatchCheckLayerAvailability",
+                          + "ecr:InitiateLayerUpload",
+                          + "ecr:UploadLayerPart",
+                          + "ecr:CompleteLayerUpload",
+                          + "ecr:PutImage",
+                          + "ecr:BatchGetImage",
+                          + "ecr:DescribeImages",
+                          + "ecr:DescribeImageScanFindings",
+                        ]
+                      + Effect   = "Allow"
+                      + Resource = "arn:aws:ecr:eu-west-2:<ACCOUNT_ID>:repository/legacy-api"
+                      + Sid      = "PushToAppRepository"
+                    },
+                ]
+              + Version   = "2012-10-17"
+            }
+        )
+      + role        = (known after apply)
+    }
+
+  # aws_iam_role_policy.plan will be created
+  + resource "aws_iam_role_policy" "plan" {
+      + id          = (known after apply)
+      + name        = "platform-read"
+      + name_prefix = (known after apply)
+      + policy      = jsonencode(
+            {
+              + Statement = [
+                  + {
+                      + Action   = [
+                          + "ec2:Describe*",
+                          + "elasticloadbalancing:Describe*",
+                          + "ecs:Describe*",
+                          + "ecs:List*",
+                          + "application-autoscaling:Describe*",
+                          + "cloudwatch:Describe*",
+                          + "cloudwatch:GetDashboard",
+                          + "cloudwatch:ListDashboards",
+                          + "cloudwatch:ListTagsForResource",
+                          + "logs:Describe*",
+                          + "logs:ListTagsForResource",
+                          + "logs:ListTagsLogGroup",
+                          + "sns:GetTopicAttributes",
+                          + "sns:GetSubscriptionAttributes",
+                          + "sns:ListSubscriptionsByTopic",
+                          + "sns:ListTagsForResource",
+                          + "ecr:DescribeRepositories",
+                          + "ecr:DescribeImages",
+                          + "ecr:ListTagsForResource",
+                          + "route53:GetHostedZone",
+                          + "route53:GetChange",
+                          + "route53:ListResourceRecordSets",
+                          + "route53:ListTagsForResource",
+                        ]
+                      + Effect   = "Allow"
+                      + Resource = "*"
+                      + Sid      = "DescribePlatformServices"
+                    },
+                  + {
+                      + Action   = [
+                          + "dynamodb:Describe*",
+                          + "dynamodb:ListTagsOfResource",
+                        ]
+                      + Effect   = "Allow"
+                      + Resource = "arn:aws:dynamodb:eu-west-2:<ACCOUNT_ID>:table/legacy-api-production"
+                      + Sid      = "DescribeAppTable"
+                    },
+                  + {
+                      + Action   = [
+                          + "iam:Get*",
+                          + "iam:List*",
+                        ]
+                      + Effect   = "Allow"
+                      + Resource = [
+                          + "arn:aws:iam::<ACCOUNT_ID>:role/legacy-api-*",
+                          + "arn:aws:iam::<ACCOUNT_ID>:instance-profile/legacy-api-*",
+                          + "arn:aws:iam::<ACCOUNT_ID>:policy/legacy-api-*",
+                        ]
+                      + Sid      = "ReadProjectIam"
+                    },
+                  + {
+                      + Action   = [
+                          + "s3:Get*",
+                          + "s3:List*",
+                        ]
+                      + Effect   = "Allow"
+                      + Resource = "arn:aws:s3:::legacy-api-app-*"
+                      + Sid      = "ReadAppBucket"
+                    },
+                  + {
+                      + Action   = "s3:ListBucket"
+                      + Effect   = "Allow"
+                      + Resource = "arn:aws:s3:::legacy-api-tfstate-<ACCOUNT_ID>-eu-west-2"
+                      + Sid      = "ListStateBucket"
+                    },
+                  + {
+                      + Action   = "s3:GetObject"
+                      + Effect   = "Allow"
+                      + Resource = "arn:aws:s3:::legacy-api-tfstate-<ACCOUNT_ID>-eu-west-2/legacy-api/platform.tfstate"
+                      + Sid      = "ReadState"
+                    },
+                  + {
+                      + Action   = [
+                          + "s3:GetObject",
+                          + "s3:PutObject",
+                          + "s3:DeleteObject",
+                        ]
+                      + Effect   = "Allow"
+                      + Resource = "arn:aws:s3:::legacy-api-tfstate-<ACCOUNT_ID>-eu-west-2/legacy-api/platform.tfstate.tflock"
+                      + Sid      = "StateLockFile"
+                    },
+                ]
+              + Version   = "2012-10-17"
+            }
+        )
+      + role        = (known after apply)
+    }
+
+  # aws_iam_role_policy.plan_store will be created
+  + resource "aws_iam_role_policy" "plan_store" {
+      + id          = (known after apply)
+      + name        = "saved-plan-write"
+      + name_prefix = (known after apply)
+      + policy      = jsonencode(
+            {
+              + Statement = [
+                  + {
+                      + Action   = "s3:PutObject"
+                      + Effect   = "Allow"
+                      + Resource = "arn:aws:s3:::legacy-api-tfstate-<ACCOUNT_ID>-eu-west-2/plans/legacy-api/*"
+                      + Sid      = "WriteSavedPlans"
+                    },
+                ]
+              + Version   = "2012-10-17"
+            }
+        )
+      + role        = (known after apply)
+    }
+
+  # aws_s3_bucket.state will be created
+  + resource "aws_s3_bucket" "state" {
+      + acceleration_status         = (known after apply)
+      + acl                         = (known after apply)
+      + arn                         = (known after apply)
+      + bucket                      = "legacy-api-tfstate-<ACCOUNT_ID>-eu-west-2"
+      + bucket_domain_name          = (known after apply)
+      + bucket_prefix               = (known after apply)
+      + bucket_regional_domain_name = (known after apply)
+      + force_destroy               = false
+      + hosted_zone_id              = (known after apply)
+      + id                          = (known after apply)
+      + object_lock_enabled         = (known after apply)
+      + policy                      = (known after apply)
+      + region                      = (known after apply)
+      + request_payer               = (known after apply)
+      + tags_all                    = {
+          + "Environment" = "production"
+          + "ManagedBy"   = "Terraform"
+          + "Project"     = "legacy-api"
+          + "Stack"       = "bootstrap"
+        }
+      + website_domain              = (known after apply)
+      + website_endpoint            = (known after apply)
+
+      + cors_rule (known after apply)
+
+      + grant (known after apply)
+
+      + lifecycle_rule (known after apply)
+
+      + logging (known after apply)
+
+      + object_lock_configuration (known after apply)
+
+      + replication_configuration (known after apply)
+
+      + server_side_encryption_configuration (known after apply)
+
+      + versioning (known after apply)
+
+      + website (known after apply)
+    }
+
+  # aws_s3_bucket_lifecycle_configuration.state will be created
+  + resource "aws_s3_bucket_lifecycle_configuration" "state" {
+      + bucket                                 = (known after apply)
+      + expected_bucket_owner                  = (known after apply)
+      + id                                     = (known after apply)
+      + transition_default_minimum_object_size = "all_storage_classes_128K"
+
+      + rule {
+          + id     = "expire-old-state-versions"
+          + status = "Enabled"
+            # (1 unchanged attribute hidden)
+
+          + abort_incomplete_multipart_upload {
+              + days_after_initiation = 7
+            }
+
+          + filter {
+                # (1 unchanged attribute hidden)
+            }
+
+          + noncurrent_version_expiration {
+              + newer_noncurrent_versions = 10
+              + noncurrent_days           = 90
+            }
+        }
+      + rule {
+          + id     = "expire-saved-plans"
+          + status = "Enabled"
+            # (1 unchanged attribute hidden)
+
+          + expiration {
+              + days                         = 3
+              + expired_object_delete_marker = false
+            }
+
+          + filter {
+              + prefix = "plans/"
+            }
+
+          + noncurrent_version_expiration {
+              + noncurrent_days = 1
+            }
+        }
+    }
+
+  # aws_s3_bucket_ownership_controls.state will be created
+  + resource "aws_s3_bucket_ownership_controls" "state" {
+      + bucket = (known after apply)
+      + id     = (known after apply)
+
+      + rule {
+          + object_ownership = "BucketOwnerEnforced"
+        }
+    }
+
+  # aws_s3_bucket_policy.state will be created
+  + resource "aws_s3_bucket_policy" "state" {
+      + bucket = (known after apply)
+      + id     = (known after apply)
+      + policy = (known after apply)
+    }
+
+  # aws_s3_bucket_public_access_block.state will be created
+  + resource "aws_s3_bucket_public_access_block" "state" {
+      + block_public_acls       = true
+      + block_public_policy     = true
+      + bucket                  = (known after apply)
+      + id                      = (known after apply)
+      + ignore_public_acls      = true
+      + restrict_public_buckets = true
+    }
+
+  # aws_s3_bucket_server_side_encryption_configuration.state will be created
+  + resource "aws_s3_bucket_server_side_encryption_configuration" "state" {
+      + bucket = (known after apply)
+      + id     = (known after apply)
+
+      + rule {
+          + apply_server_side_encryption_by_default {
+              + sse_algorithm     = "AES256"
+                # (1 unchanged attribute hidden)
+            }
+        }
+    }
+
+  # aws_s3_bucket_versioning.state will be created
+  + resource "aws_s3_bucket_versioning" "state" {
+      + bucket = (known after apply)
+      + id     = (known after apply)
+
+      + versioning_configuration {
+          + mfa_delete = (known after apply)
+          + status     = "Enabled"
+        }
+    }
+
+Plan: 18 to add, 0 to change, 0 to destroy.
+
+Changes to Outputs:
+  + ecr_repository_url         = (known after apply)
+  + github_apply_role_arn      = (known after apply)
+  + github_image_push_role_arn = (known after apply)
+  + github_plan_role_arn       = (known after apply)
+  + platform_backend_config    = <<-EOT
+        bucket = "legacy-api-tfstate-<ACCOUNT_ID>-eu-west-2"
+        region = "eu-west-2"
+    EOT
+  + saved_plans_prefix         = "plans/legacy-api"
+  + state_bucket_name          = "legacy-api-tfstate-<ACCOUNT_ID>-eu-west-2"
+  + trusted_oidc_subjects      = {
+      + apply      = "repo:Fer-as@78626961/ec2-to-ecs-fargate-migration@1432997653:environment:production"
+      + image_push = "repo:Fer-as@78626961/ec2-to-ecs-fargate-migration@1432997653:ref:refs/heads/main"
+      + plan       = "repo:Fer-as@78626961/ec2-to-ecs-fargate-migration@1432997653:ref:refs/heads/main"
+    }
+
+─────────────────────────────────────────────────────────────────────────────
+
+Saved the plan to: bootstrap.tfplan
+
+To perform exactly these actions, run the following command to apply:
+    terraform apply "bootstrap.tfplan"

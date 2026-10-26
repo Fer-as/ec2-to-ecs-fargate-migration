@@ -1,0 +1,12 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {"Sid": "EcrLogin", "Effect": "Allow", "Action": "ecr:GetAuthorizationToken", "Resource": "*"},
+    {"Sid": "PushToAppRepository", "Effect": "Allow",
+     "Action": [
+       "ecr:BatchCheckLayerAvailability", "ecr:InitiateLayerUpload", "ecr:UploadLayerPart",
+       "ecr:CompleteLayerUpload", "ecr:PutImage", "ecr:BatchGetImage", "ecr:DescribeImages",
+       "ecr:DescribeImageScanFindings"],
+     "Resource": "${ecr_repository_arn}"}
+  ]
+}

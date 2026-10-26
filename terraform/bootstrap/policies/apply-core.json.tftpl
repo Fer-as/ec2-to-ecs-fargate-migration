@@ -1,0 +1,52 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {"Sid": "ManageAppTableOnly", "Effect": "Allow", "Action": "dynamodb:*", "Resource": "${table_arn}"},
+    {"Sid": "ManageAppBucketOnly", "Effect": "Allow", "Action": "s3:*",
+     "Resource": "arn:${partition}:s3:::${project}-app-*"},
+    {"Sid": "WriteState", "Effect": "Allow", "Action": "s3:PutObject",
+     "Resource": "${state_bucket_arn}/${platform_state_key}"},
+    {"Sid": "ManageProjectRoles", "Effect": "Allow",
+     "Action": [
+       "iam:CreateRole", "iam:DeleteRole", "iam:UpdateRole", "iam:UpdateAssumeRolePolicy",
+       "iam:TagRole", "iam:UntagRole", "iam:PutRolePolicy", "iam:DeleteRolePolicy",
+       "iam:CreateInstanceProfile", "iam:DeleteInstanceProfile",
+       "iam:AddRoleToInstanceProfile", "iam:RemoveRoleFromInstanceProfile",
+       "iam:TagInstanceProfile", "iam:UntagInstanceProfile"],
+     "Resource": [
+       "arn:${partition}:iam::${account_id}:role/${project}-*",
+       "arn:${partition}:iam::${account_id}:instance-profile/${project}-*"]},
+    {"Sid": "PassProjectRolesToKnownServicesOnly", "Effect": "Allow", "Action": "iam:PassRole",
+     "Resource": "arn:${partition}:iam::${account_id}:role/${project}-*",
+     "Condition": {"StringEquals": {"iam:PassedToService": [
+       "ecs-tasks.amazonaws.com", "ec2.amazonaws.com", "vpc-flow-logs.amazonaws.com"]}}},
+    {"Sid": "ServiceLinkedRoles", "Effect": "Allow", "Action": "iam:CreateServiceLinkedRole", "Resource": "*",
+     "Condition": {"StringEquals": {"iam:AWSServiceName": [
+       "ecs.amazonaws.com", "elasticloadbalancing.amazonaws.com", "ecs.application-autoscaling.amazonaws.com"]}}},
+    {"Sid": "DenyOutsideApprovedRegion", "Effect": "Deny",
+     "Action": ["ec2:*", "ecs:*", "elasticloadbalancing:*", "application-autoscaling:*",
+                "cloudwatch:*", "logs:*", "sns:*", "dynamodb:*"],
+     "Resource": "*",
+     "Condition": {"StringNotEquals": {"aws:RequestedRegion": "${region}"}}},
+    {"Sid": "DenyDataSharingAndUnrelatedNetworking", "Effect": "Deny",
+     "Action": [
+       "ec2:ModifySnapshotAttribute", "ec2:ModifyImageAttribute", "ec2:CreateKeyPair", "ec2:ImportKeyPair",
+       "ec2:CreateSnapshot", "ec2:CreateSnapshots", "ec2:CopySnapshot", "ec2:CreateImage", "ec2:CopyImage",
+       "ec2:ExportImage", "ec2:CreateInstanceExportTask", "ec2:GetPasswordData", "ec2:EnableSerialConsoleAccess",
+       "ec2:*VpcPeeringConnection*", "ec2:*TransitGateway*", "ec2:*VpnConnection*", "ec2:*VpnGateway*",
+       "ec2:*CustomerGateway*", "ec2:*ClientVpn*"],
+     "Resource": "*"},
+    {"Sid": "DenyInstanceTypeChange", "Effect": "Deny", "Action": "ec2:ModifyInstanceAttribute", "Resource": "*",
+     "Condition": {"Null": {"ec2:Attribute/InstanceType": "false"},
+                   "StringNotEquals": {"ec2:Attribute/InstanceType": "${legacy_instance_type}"}}},
+    {"Sid": "DenyPipelineIdentityChanges", "Effect": "Deny", "Action": "iam:*",
+     "Resource": [
+       "arn:${partition}:iam::${account_id}:role/gha-*",
+       "arn:${partition}:iam::${account_id}:oidc-provider/*",
+       "arn:${partition}:iam::${account_id}:policy/gha-*"]},
+    {"Sid": "ProtectBootstrap", "Effect": "Deny",
+     "Action": ["s3:DeleteBucket", "s3:PutBucketPolicy", "s3:DeleteBucketPolicy",
+                "s3:PutBucketVersioning", "s3:PutLifecycleConfiguration"],
+     "Resource": "${state_bucket_arn}"}
+  ]
+}

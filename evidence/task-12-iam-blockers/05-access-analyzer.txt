@@ -1,0 +1,11 @@
+aws accessanalyzer validate-policy --policy-type IDENTITY_POLICY (read-only), 2026-10-25T19:57Z
+Empty section = no findings.
+== apply-platform-read.json
+== apply-apply-network.json
+== apply-apply-services.json
+== apply-apply-core.json
+== apply-plan-store-read.json
+== plan-plan-store-write.json
+== image_push-image-push.json
+
+Probe (policy with a misspelt action and an unsupported condition key): ERROR INVALID_ACTION only.

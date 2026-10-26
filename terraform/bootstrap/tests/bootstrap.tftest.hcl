@@ -112,3 +112,140 @@ run "wildcards_are_not_accepted_in_the_repository_name" {
 
   expect_failures = [var.github_repository]
 }
+
+# --- Task 11: hardened pipeline permissions (offline; ci/tests/test_iam_policies.py
+# evaluates the same templates statement by statement) ---------------------------------------
+
+run "policies_are_fully_known_at_plan_time" {
+  command = plan
+
+  # ARNs are built from names, so the plan shows every policy in full
+  assert {
+    condition = alltrue([
+      for p in [aws_iam_policy.apply_write["apply-network"].policy, aws_iam_policy.apply_write["apply-services"].policy,
+        aws_iam_policy.apply_write["apply-core"].policy, aws_iam_role_policy.apply_read.policy,
+      aws_iam_role_policy.plan_store.policy, aws_iam_role_policy.image_push.policy] :
+      can(jsondecode(p).Statement)
+    ])
+    error_message = "Pipeline policies must render to valid JSON during plan."
+  }
+}
+
+run "apply_role_has_no_service_wide_write" {
+  command = plan
+
+  # The old ec2:* / ecs:* / elasticloadbalancing:* ... "Resource *" allow is gone
+  assert {
+    condition = alltrue(flatten([
+      for s in local.apply_write_statements : [
+        for a in flatten([s.Action]) :
+        s.Effect == "Deny" || !contains(["ec2:*", "ecs:*", "elasticloadbalancing:*", "application-autoscaling:*", "cloudwatch:*", "logs:*", "sns:*"], a)
+      ]
+    ]))
+    error_message = "The apply role must not have service-wide (svc:*) write access to platform services."
+  }
+
+  # Only the documented statements may allow Resource "*"
+  assert {
+    condition = alltrue([
+      for s in local.apply_write_statements :
+      s.Effect == "Deny" || s.Resource != "*" || contains(["EcsDeregisterTaskDefinitionNoResourceLevel", "ServiceLinkedRoles"], s.Sid)
+    ])
+    error_message = "Unexpected Allow on Resource \"*\" in the apply policy."
+  }
+
+  assert {
+    condition = anytrue([
+      for s in local.apply_write_statements :
+      s.Sid == "DenyPipelineIdentityChanges" && s.Effect == "Deny" &&
+      contains(s.Resource, "arn:aws:iam::111122223333:role/gha-*") &&
+      contains(s.Resource, "arn:aws:iam::111122223333:oidc-provider/*") &&
+      contains(s.Resource, "arn:aws:iam::111122223333:policy/gha-*")
+    ])
+    error_message = "The apply role must be denied changes to gha-* roles and OIDC providers."
+  }
+
+  assert {
+    condition = anytrue([
+      for s in local.apply_write_statements :
+      s.Sid == "DenyDataSharingAndUnrelatedNetworking" && s.Effect == "Deny" &&
+      contains(s.Action, "ec2:ModifySnapshotAttribute") && contains(s.Action, "ec2:CreateKeyPair") &&
+      contains(s.Action, "ec2:ImportKeyPair") && contains(s.Action, "ec2:*VpcPeeringConnection*")
+    ])
+    error_message = "Snapshot/AMI sharing, key pairs and peering must be explicitly denied."
+  }
+
+  assert {
+    condition = anytrue([
+      for s in local.apply_write_statements :
+      s.Sid == "Ec2RunLegacyInstanceOnly" &&
+      s.Condition.StringEquals["ec2:InstanceType"] == "t3.micro" &&
+      s.Condition.StringEquals["ec2:MetadataHttpTokens"] == "required" &&
+      s.Condition.StringEquals["aws:RequestTag/Project"] == "legacy-api"
+    ])
+    error_message = "Instance launches must be t3.micro, IMDSv2-only and tagged Project=legacy-api."
+  }
+
+  assert {
+    condition = anytrue([
+      for s in local.apply_write_statements :
+      s.Sid == "ProtectBootstrap" && s.Effect == "Deny" &&
+      s.Resource == "arn:aws:s3:::legacy-api-tfstate-111122223333-eu-west-2"
+    ])
+    error_message = "The state bucket must stay protected from the apply role."
+  }
+}
+
+run "plan_and_image_roles_stay_narrow" {
+  command = plan
+
+  # The plan role only reads, plus writing saved plans under plans/legacy-api/
+  assert {
+    condition = alltrue(flatten([
+      for s in jsondecode(aws_iam_role_policy.plan.policy).Statement : [
+        for a in flatten([s.Action]) :
+        can(regex(":(Describe|Get|List)", a)) || (a == "s3:PutObject" || a == "s3:DeleteObject") && endswith(s.Resource, ".tflock")
+      ]
+    ]))
+    error_message = "The plan role's read policy may only read (plus the state lock file)."
+  }
+
+  assert {
+    condition     = jsondecode(aws_iam_role_policy.plan_store.policy).Statement[0].Resource == "arn:aws:s3:::legacy-api-tfstate-111122223333-eu-west-2/plans/legacy-api/*"
+    error_message = "Saved plans may only be written under plans/legacy-api/."
+  }
+
+  assert {
+    condition = alltrue([
+      for s in jsondecode(aws_iam_role_policy.image_push.policy).Statement :
+      s.Resource == "*" ? s.Action == "ecr:GetAuthorizationToken" : s.Resource == "arn:aws:ecr:eu-west-2:111122223333:repository/legacy-api"
+    ])
+    error_message = "The image-push role may only push to the legacy-api repository."
+  }
+
+  # Trust policies are unchanged: apply is still bound to the protected environment
+  assert {
+    condition     = local.sub_environment == "repo:example-owner@1000001/example-repo@2000002:environment:production"
+    error_message = "The apply role must only trust the production environment subject."
+  }
+}
+
+run "apply_policies_fit_iam_size_limits" {
+  command = plan
+
+  # IAM limits (not counting whitespace): 6,144 per managed policy, 10,240 for all inline
+  # policies of a role. jsonencode() output is already minified.
+  assert {
+    condition     = alltrue([for p in aws_iam_policy.apply_write : length(p.policy) <= 6144])
+    error_message = "Each apply managed policy must stay within 6,144 characters."
+  }
+  assert {
+    condition = (length(aws_iam_role_policy.apply_read.policy) + length(aws_iam_role_policy.apply_plan_store.policy) <= 10240 &&
+    length(aws_iam_role_policy.plan.policy) + length(aws_iam_role_policy.plan_store.policy) <= 10240)
+    error_message = "Inline policies per role must stay within 10,240 characters in total."
+  }
+  assert {
+    condition     = length(aws_iam_role_policy_attachment.apply_write) == 3 && alltrue([for a in aws_iam_role_policy_attachment.apply_write : a.role == "gha-legacy-api-apply"])
+    error_message = "All three write policies must be attached to the apply role only."
+  }
+}

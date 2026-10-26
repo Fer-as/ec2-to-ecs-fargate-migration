@@ -1,0 +1,7 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {"Sid": "ReadSavedPlans", "Effect": "Allow", "Action": "s3:GetObject",
+     "Resource": "${state_bucket_arn}/${plans_prefix}/*"}
+  ]
+}

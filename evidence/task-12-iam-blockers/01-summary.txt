@@ -1,0 +1,56 @@
+Task 12 - Final IAM deployment blockers (2026-10-25)
+=====================================================
+Account <ACCOUNT_ID> (ends 7756, same as Tasks 10-11), region eu-west-2.
+Credentials: AWS CLI login session; exported only inside a subshell for terraform plan,
+never written to files, logs or this evidence.
+AWS calls (all read-only): sts get-caller-identity, terraform plan refresh (data sources,
+incl. the existing GitHub OIDC provider), iam simulate-custom-policy (172 calls),
+accessanalyzer validate-policy (8 calls). Nothing created, changed or deleted.
+No terraform apply/destroy. No commits. GitHub settings untouched.
+
+1. Regional deny: NOT a blocker. The rendered DenyOutsideApprovedRegion lists only
+   ec2, ecs, elasticloadbalancing, application-autoscaling, cloudwatch, logs, sns,
+   dynamodb. IAM calls signed for us-east-1 are not denied (simulated). No change made;
+   regression tests added (and a gate test that fails if a global service is added).
+2. Untagged security groups: FIXED. aws_default_security_group removed from the platform;
+   the two Null-ResourceTag statements removed from the apply policy. Checkov
+   CKV2_AWS_12 recorded as exception B11.
+3. NEW BLOCKER found while reviewing the final JSON: the Task 11 apply role had 15,667
+   characters of inline policy; IAM allows 10,240 in total per role, so the bootstrap
+   apply would have failed. FIXED: write permissions split into 3 customer-managed
+   policies (5,335 / 5,580 / 2,936 of 6,144), attached to the apply role. The apply role
+   is explicitly denied iam:* on policy/gha-*.
+4. Rendered-policy gate: ci/tests/test_rendered_policy_gate.py (blocking, ci.yml).
+
+Fresh bootstrap plan (terraform/bootstrap/bootstrap.tfplan, gitignored, not committed)
+  sha256: 39dd49325f46ef476ae1af7012830715b886bf5e43b8fd186f6f6ecd3e2630e4
+  Plan: 23 to add, 0 to change, 0 to destroy (0 replacements)
+    3  aws_iam_role                 (apply, image_push, plan)
+    5  aws_iam_role_policy          (apply_plan_store, apply_read, image_push, plan, plan_store)
+    3  aws_iam_policy               (apply_write["apply-network"|"apply-services"|"apply-core"])
+    3  aws_iam_role_policy_attachment (apply_write[same keys], role gha-legacy-api-apply)
+    7  S3 (bucket, lifecycle, ownership, policy, public access block, SSE, versioning)
+    2  ECR (repository, lifecycle policy)
+  Task 11 had 18 = 3 roles + 6 role policies + 7 S3 + 2 ECR (Task 11's "7 role
+  policies" was a miscount). Now 23 = 18 - 1 inline policy + 3 managed + 3 attachments.
+  OIDC provider: data.aws_iam_openid_connect_provider.github[0], read only.
+  All IAM policy documents fully visible in the plan; trust policies unchanged.
+  Task 10 and Task 11 plans are superseded and must not be applied.
+
+Files
+  02-bootstrap-plan-redacted.txt  terraform plan output, account ID redacted
+  03-iam-policy-simulation.txt    AWS policy simulator: 172/172 as expected
+  04-checkov.txt                  Checkov 3.3.26: 285 passed, 0 failed, 30 skipped
+  05-access-analyzer.txt          Access Analyzer: 0 findings on 7 rendered policies
+  06-gate-mutation-check.txt      9/9 injected regressions caught by the gate
+  07-permission-matrix.md         copy of docs/iam-permission-matrix.md
+
+Local results
+  terraform fmt -check / validate     both roots OK
+  terraform test platform (mocked)    18 passed
+  terraform test bootstrap (mocked)   9 passed
+  pytest ci/tests                     320 passed
+  pytest (app suite, unchanged)       62 passed, 24 skipped (DynamoDB Local not running)
+
+Status: ready for independent review. Apply only after explicit approval, manually by
+the account owner. deploy.yml stays unused until an enforceable approval is chosen.

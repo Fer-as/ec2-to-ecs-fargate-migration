@@ -12,7 +12,7 @@ ERRORS=0
 WARNINGS=0
 
 # Check if running as root or with sudo
-if [ "$EUID" -ne 0 ]; then 
+if [ "$EUID" -ne 0 ]; then
     echo "⚠️  Running as non-root. Some checks may require sudo."
 fi
 

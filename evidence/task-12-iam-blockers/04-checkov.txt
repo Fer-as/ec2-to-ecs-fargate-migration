@@ -1,0 +1,84 @@
+Checkov 3.3.26 (bridgecrew/checkov@sha256:8e63f217...dd93), local run over terraform/ (both roots), 2026-10-25T19:57Z
+Passed checks: 285, Failed checks: 0, Skipped checks: 30
+
+New exception: CKV2_AWS_12 on aws_vpc.main (register entry B11)
+Check: CKV2_AWS_12: "Ensure the default security group of every VPC restricts all traffic"
+	SKIPPED for resource: aws_vpc.main
+	Suppress comment: Default SG left unmanaged so the apply role needs no rights on untagged security groups; no workload uses it (see docs/security-exceptions.md)
+	File: /main.tf:59-68
+
+Checks Checkov ran on the pipeline IAM policies:
+Check: CKV_AWS_62: "Ensure IAM policies that allow full "*-*" administrative privileges are not created"
+	PASSED for resource: aws_iam_role_policy.plan
+Check: CKV_AWS_63: "Ensure no IAM policies documents allow "*" as a statement's actions"
+	PASSED for resource: aws_iam_role_policy.plan
+Check: CKV_AWS_62: "Ensure IAM policies that allow full "*-*" administrative privileges are not created"
+	PASSED for resource: aws_iam_role_policy.plan_store
+Check: CKV_AWS_63: "Ensure no IAM policies documents allow "*" as a statement's actions"
+	PASSED for resource: aws_iam_role_policy.plan_store
+Check: CKV_AWS_62: "Ensure IAM policies that allow full "*-*" administrative privileges are not created"
+	PASSED for resource: aws_iam_role_policy.image_push
+Check: CKV_AWS_63: "Ensure no IAM policies documents allow "*" as a statement's actions"
+	PASSED for resource: aws_iam_role_policy.image_push
+Check: CKV_AWS_62: "Ensure IAM policies that allow full "*-*" administrative privileges are not created"
+	PASSED for resource: aws_iam_role_policy.apply_read
+Check: CKV_AWS_63: "Ensure no IAM policies documents allow "*" as a statement's actions"
+	PASSED for resource: aws_iam_role_policy.apply_read
+Check: CKV_AWS_62: "Ensure IAM policies that allow full "*-*" administrative privileges are not created"
+	PASSED for resource: aws_iam_policy.apply_write["apply-services"]
+Check: CKV_AWS_63: "Ensure no IAM policies documents allow "*" as a statement's actions"
+	PASSED for resource: aws_iam_policy.apply_write["apply-services"]
+Check: CKV_AWS_274: "Disallow IAM roles, users, and groups from using the AWS AdministratorAccess policy"
+	PASSED for resource: aws_iam_role_policy_attachment.apply_write
+Check: CKV_AWS_62: "Ensure IAM policies that allow full "*-*" administrative privileges are not created"
+	PASSED for resource: aws_iam_role_policy.apply_plan_store
+Check: CKV_AWS_63: "Ensure no IAM policies documents allow "*" as a statement's actions"
+	PASSED for resource: aws_iam_role_policy.apply_plan_store
+Check: CKV_AWS_62: "Ensure IAM policies that allow full "*-*" administrative privileges are not created"
+	PASSED for resource: aws_iam_policy.apply_write["apply-network"]
+Check: CKV_AWS_63: "Ensure no IAM policies documents allow "*" as a statement's actions"
+	PASSED for resource: aws_iam_policy.apply_write["apply-network"]
+Check: CKV_AWS_62: "Ensure IAM policies that allow full "*-*" administrative privileges are not created"
+	PASSED for resource: aws_iam_policy.apply_write["apply-core"]
+Check: CKV_AWS_63: "Ensure no IAM policies documents allow "*" as a statement's actions"
+	PASSED for resource: aws_iam_policy.apply_write["apply-core"]
+Check: CKV_AWS_62: "Ensure IAM policies that allow full "*-*" administrative privileges are not created"
+	PASSED for resource: aws_iam_role_policy.ec2_dynamodb
+Check: CKV_AWS_63: "Ensure no IAM policies documents allow "*" as a statement's actions"
+	PASSED for resource: aws_iam_role_policy.ec2_dynamodb
+Check: CKV_AWS_62: "Ensure IAM policies that allow full "*-*" administrative privileges are not created"
+	PASSED for resource: aws_iam_role_policy.ecs_execution
+Check: CKV_AWS_63: "Ensure no IAM policies documents allow "*" as a statement's actions"
+	PASSED for resource: aws_iam_role_policy.ecs_execution
+Check: CKV_AWS_62: "Ensure IAM policies that allow full "*-*" administrative privileges are not created"
+	PASSED for resource: aws_iam_role_policy.ecs_task_dynamodb
+Check: CKV_AWS_63: "Ensure no IAM policies documents allow "*" as a statement's actions"
+	PASSED for resource: aws_iam_role_policy.ecs_task_dynamodb
+Check: CKV_AWS_62: "Ensure IAM policies that allow full "*-*" administrative privileges are not created"
+	PASSED for resource: aws_iam_role_policy.ecs_seed_dynamodb
+Check: CKV_AWS_63: "Ensure no IAM policies documents allow "*" as a statement's actions"
+	PASSED for resource: aws_iam_role_policy.ecs_seed_dynamodb
+Check: CKV_AWS_288: "Ensure IAM policies does not allow data exfiltration"
+	PASSED for resource: aws_iam_role_policy.ec2_s3_access
+Check: CKV_AWS_289: "Ensure IAM policies does not allow permissions management / resource exposure without constraints"
+	PASSED for resource: aws_iam_role_policy.ec2_s3_access
+Check: CKV_AWS_62: "Ensure IAM policies that allow full "*-*" administrative privileges are not created"
+	PASSED for resource: aws_iam_role_policy.ec2_s3_access
+Check: CKV_AWS_355: "Ensure no IAM policies documents allow "*" as a statement's resource for restrictable actions"
+	PASSED for resource: aws_iam_role_policy.ec2_s3_access
+Check: CKV_AWS_290: "Ensure IAM policies does not allow write access without constraints"
+	PASSED for resource: aws_iam_role_policy.ec2_s3_access
+Check: CKV_AWS_63: "Ensure no IAM policies documents allow "*" as a statement's actions"
+	PASSED for resource: aws_iam_role_policy.ec2_s3_access
+Check: CKV_AWS_287: "Ensure IAM policies does not allow credentials exposure"
+	PASSED for resource: aws_iam_role_policy.ec2_s3_access
+Check: CKV_AWS_286: "Ensure IAM policies does not allow privilege escalation"
+	PASSED for resource: aws_iam_role_policy.ec2_s3_access
+Check: CKV_AWS_62: "Ensure IAM policies that allow full "*-*" administrative privileges are not created"
+	PASSED for resource: aws_iam_role_policy.vpc_flow_logs
+Check: CKV_AWS_63: "Ensure no IAM policies documents allow "*" as a statement's actions"
+	PASSED for resource: aws_iam_role_policy.vpc_flow_logs
+Check: CKV2_AWS_56: "Ensure AWS Managed IAMFullAccess IAM policy is not used."
+	PASSED for resource: aws_iam_role_policy_attachment.apply_write
+Check: CKV2_AWS_40: "Ensure AWS IAM policy does not allow full IAM privileges"
+	PASSED for resource: aws_iam_role_policy.ec2_s3_access

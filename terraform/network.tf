@@ -15,14 +15,11 @@ locals {
   azs = var.availability_zones != null ? var.availability_zones : slice(data.aws_availability_zones.available.names, 0, 2)
 }
 
-# Lock down the VPC's default security group (nothing uses it)
-resource "aws_default_security_group" "default" {
-  vpc_id = aws_vpc.main.id
-
-  tags = {
-    Name = "${var.project_name}-default-sg-unused"
-  }
-}
+# The VPC's default security group is deliberately NOT managed (Task 12): adopting it
+# needs IAM rights on an untagged security group, which IAM cannot scope to this VPC.
+# Nothing uses it: the ALB, ECS service and EC2 instance name their own security groups
+# (terraform test workloads_never_use_the_default_security_group), the VPC endpoints are
+# gateway endpoints, and the apply role cannot launch an instance into an untagged group.
 
 resource "aws_subnet" "public_b" {
   vpc_id                  = aws_vpc.main.id

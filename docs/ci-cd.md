@@ -1,6 +1,9 @@
 # CI/CD: GitHub Actions, OIDC and approval-gated deployment
 
-Status: **workflows are written and validated locally; they have not run on GitHub yet.**
+Status: `ci.yml` and `terraform-ci.yml` passed on GitHub for the pushed revision (Task 9).
+Changes from Tasks 11-13 (IAM policy gate, pre-commit step) are **not yet verified on
+GitHub**; they only count as CI-verified after they are pushed and the runs pass.
+`deploy.yml` has never run.
 Platform design: [aws-platform.md](aws-platform.md). Data/cutover rules:
 [migration-state-runbook.md](migration-state-runbook.md). Accepted risks:
 [security-exceptions.md](security-exceptions.md).
@@ -9,7 +12,7 @@ Platform design: [aws-platform.md](aws-platform.md). Data/cutover rules:
 
 | Workflow | Triggers | AWS access | What it does |
 |---|---|---|---|
-| `ci.yml` | PRs to main, pushes to main, manual, called by deploy | **none** | Linting (actionlint, yamllint, shellcheck); pytest incl. DynamoDB Local and multi-worker Gunicorn; pip-audit; image build; hardened container smoke test; non-root check; Trivy (full report + blocking gate); gitleaks; `CI gate` job |
+| `ci.yml` | PRs to main, pushes to main, manual, called by deploy | **none** | Linting (actionlint, yamllint, pre-commit hooks incl. Ruff, shellcheck); pytest incl. DynamoDB Local and multi-worker Gunicorn; pip-audit; image build; hardened container smoke test; non-root check; Trivy (full report + blocking gate); gitleaks; `CI gate` job |
 | `terraform-ci.yml` | same | **none** | fmt; `init -backend=false` and `validate` for both roots; `terraform test` (mocked); user-data render, shellcheck and byte-identity check; Checkov (blocking); `Terraform gate` job |
 | `deploy.yml` | **manual only**, main only | OIDC, 3 roles | gates → publish image → saved plan → **approval** → apply exactly that plan → verify |
 
@@ -31,9 +34,50 @@ are pinned (`app/requirements.txt`, `requirements-dev.txt`).
 | gitleaks | a secret anywhere in Git history (output redacted) |
 | Checkov | any finding without a reviewed inline exception |
 | actionlint / yamllint / shellcheck | workflow or script errors |
+| pre-commit (lint job) | trailing whitespace, missing final newline, CRLF, invalid YAML/JSON (incl. IAM policy templates), Ruff findings, merge markers, private keys, files over 500 KB, Terraform state/plans/local tfvars/key files/caches |
+| rendered IAM policy gate (`ci/tests/test_rendered_policy_gate.py`) | pipeline IAM policy regressions: unknown actions, unsupported condition keys, wildcards, untagged-resource access, prohibited actions, IAM size quotas |
 | `ci/tests/test_workflow_policy.py` | pipeline invariants broken (unpinned action, OIDC in CI, apply outside the gated job, `-auto-approve`, out-of-band ECS/ALB calls, …) |
 
 No step uses `continue-on-error`, `--soft-fail` or similar.
+
+### Pre-commit hooks (local, before every commit)
+
+[.pre-commit-config.yaml](../.pre-commit-config.yaml) runs fast file-level checks on
+each `git commit`: whitespace, final newline, LF line endings, YAML/JSON syntax,
+yamllint on workflows, Ruff (rules in [ruff.toml](../ruff.toml)), merge-conflict markers,
+private keys, large files, forbidden artefacts (state, plans, `terraform.tfvars`, keys,
+caches), gitleaks on staged changes (same `.gitleaks.toml`, no extra allowlist) and
+`terraform fmt`. Formatting hooks skip `evidence/` (raw output stays byte-for-byte);
+the secret, key, merge-marker and size hooks still scan it.
+
+Kept in CI only (too slow or need Docker/AWS-like services): Trivy, Checkov, image
+build and smoke test, DynamoDB integration tests, `terraform validate`/`test`,
+actionlint, shellcheck, pip-audit, full-history gitleaks. The CI lint job runs the same
+hooks (`SKIP=gitleaks,terraform-fmt`, covered by other jobs), so `--no-verify` does not
+bypass them.
+
+PowerShell (Windows), from the repository root:
+
+```powershell
+# Once: install pre-commit into the project virtualenv and the Git hook
+.\venv\Scripts\python.exe -m pip install "pre-commit==4.6.2"
+.\venv\Scripts\pre-commit.exe install
+
+# Before committing: run every hook on all tracked files
+.\venv\Scripts\pre-commit.exe run --all-files
+
+# New files are not tracked yet: check them explicitly (or stage them first)
+.\venv\Scripts\pre-commit.exe run --files (git ls-files --others --exclude-standard)
+
+# One hook only, e.g. Ruff
+.\venv\Scripts\pre-commit.exe run ruff-check --all-files
+```
+
+Requirements: `terraform` on `PATH` for the `terraform-fmt` hook. The first run
+downloads the hook environments; the gitleaks hook builds gitleaks with a Go toolchain
+that pre-commit downloads itself. Hooks that fix files (whitespace, end of file, line
+endings, `terraform fmt`) stop the commit; review the change, `git add` it and commit
+again.
 
 ## 3. Deployment (`deploy.yml`)
 
@@ -152,6 +196,14 @@ takes `run_id`, `commit_sha` and `plan_sha256`, verifies the saved plan and refu
 anything but the current `main`, with branch protection (PR review) as the human control.
 The apply role's trust would then need the `ref:refs/heads/main` subject instead of
 `environment:production`, which is a reviewed change in `terraform/bootstrap`.
+
+**Current state (Task 12):** the repository is private on Free, so this workflow is
+**not** protected by required reviewers. The apply trust stays `environment:production`,
+`deploy.yml` is not run, and neither option above is active. The bootstrap
+(`terraform/bootstrap`) is a separate, manual apply by the account owner after explicit
+approval; it does not enable deployments.
+The choice, and the permission matrix for the roles, are in
+[iam-permission-matrix.md](iam-permission-matrix.md) section 6.
 
 ## 6. Repository settings to create (not secrets unless stated)
 

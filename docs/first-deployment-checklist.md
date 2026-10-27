@@ -132,6 +132,20 @@ or the plan shows the two task definitions being destroyed:
 `terraform -chdir=terraform plan -var-file=environments/production.tfvars -var "app_image_digest=<sha256:...>"`
 → expected `5 to add, 0 to change, 0 to destroy`. Never apply locally.
 
+### Second recovery run (run 40538277000): RunInstances denied on the AMI
+
+The recovery apply created the bundle object and dashboard and replaced both task
+definitions, then `aws_instance.app` failed: `ec2:RunInstances` implicitly denied on the
+Canonical AMI. Decoded cause: IAM evaluated `ec2:Owner = amazon` (the AMI's owner alias),
+while `Ec2RunFromCanonicalUbuntuOnly` accepted only `099720109477`. Fix: bootstrap policy
+`apply-network` accepts `["099720109477", "amazon"]` (see iam-permission-matrix.md).
+
+| # | Step | Expected | STOP if |
+|---|---|---|---|
+| 4R.5 | Review the bootstrap plan (operator, credentials in-process; quote `-out` in PowerShell 5.1): `terraform -chdir=terraform/bootstrap plan -input=false '-out=bootstrap-iam-fix.tfplan'` | `Plan: 0 to add, 1 to change, 0 to destroy`; only `aws_iam_policy.apply_write["apply-network"]`, only the `ec2:Owner` condition of `Ec2RunFromCanonicalUbuntuOnly` | Any other resource, any OIDC/role/bucket/ECR change |
+| 4R.6 | Separate human approval, then `terraform -chdir=terraform/bootstrap apply bootstrap-iam-fix.tfplan`; back up `terraform.tfstate` again | `1 changed`; managed policy gets a new default version | Any error |
+| 4R.7 | Commit + push the fix, CI green, then a **new** `platform` deploy (never re-run the failed plan) | Fresh plan against the partial state: creates `aws_instance.app`, `aws_eip.app`, `aws_lb_target_group_attachment.ec2`; task definitions replaced again only if the image digest changed | Anything else replaced or deleted |
+
 ### Fallback: stop the costs if recovery cannot finish today
 
 Live now: NAT gateway + its Elastic IP, ALB + its public IPv4 (about $0.09-0.10/hour,

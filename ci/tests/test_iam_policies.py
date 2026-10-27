@@ -421,6 +421,22 @@ REALISTIC = [
     ("run with key pair", "ec2:RunInstances", f"{EC2}:key-pair/k", {}, "implicitDeny"),
     ("share snapshot", "ec2:ModifySnapshotAttribute", f"arn:aws:ec2:{REGION}::snapshot/snap-1", OWNED, "explicitDeny"),
     ("share AMI", "ec2:ModifyImageAttribute", f"arn:aws:ec2:{REGION}::image/ami-1", OWNED, "explicitDeny"),
+    # Task 22: AWS evaluates ec2:Owner as the image's owner ALIAS. Canonical's Ubuntu AMIs
+    # (OwnerId 099720109477) carry the alias "amazon"; run 40538277000 was denied because the
+    # policy accepted only the account ID. Context below is the decoded real request.
+    ("Canonical Ubuntu AMI as AWS evaluates it (owner alias amazon)", "ec2:RunInstances",
+     f"arn:aws:ec2:{REGION}::image/ami-057b46c043e81dcf4", {"ec2:Owner": "amazon"}, "allowed"),
+    ("Canonical root snapshot (owner alias amazon)", "ec2:RunInstances",
+     f"arn:aws:ec2:{REGION}::snapshot/snap-1", {"ec2:Owner": "amazon"}, "allowed"),
+    ("AMI owned by another account", "ec2:RunInstances",
+     f"arn:aws:ec2:{REGION}::image/ami-other", {"ec2:Owner": "123456789012"}, "implicitDeny"),
+    ("Marketplace AMI", "ec2:RunInstances",
+     f"arn:aws:ec2:{REGION}::image/ami-market", {"ec2:Owner": "aws-marketplace"}, "implicitDeny"),
+    ("AMI without an owner in the request", "ec2:RunInstances", f"arn:aws:ec2:{REGION}::image/ami-x", {}, "implicitDeny"),
+    ("Canonical AMI in another region", "ec2:RunInstances", "arn:aws:ec2:us-east-1::image/ami-1",
+     dict(GLOBAL, **{"ec2:Owner": "amazon"}), "explicitDeny"),
+    ("amazon-owned AMI still needs t3.micro on the instance", "ec2:RunInstances", f"{EC2}:instance/*",
+     dict(TAG, **{"ec2:InstanceType": "m5.large", "ec2:MetadataHttpTokens": "required"}), "implicitDeny"),
 ]
 
 

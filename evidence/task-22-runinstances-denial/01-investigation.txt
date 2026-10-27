@@ -1,0 +1,55 @@
+Task 22 - ec2:RunInstances denied on the Canonical AMI (GitHub run 40538277000)
+=============================================================================
+Read-only investigation, 2026-10-27. Account ends 7756, eu-west-2.
+
+Error (public job log, account redacted):
+  api error UnauthorizedOperation: ... assumed-role/gha-legacy-api-apply/gha-apply-40538277000
+  is not authorized to perform: ec2:RunInstances on resource:
+  arn:aws:ec2:eu-west-2::image/ami-057b46c043e81dcf4 because no identity-based policy allows
+  the ec2:RunInstances action.   (implicit deny; no Deny statement involved)
+
+Decoded authorization message (sts:DecodeAuthorizationMessage; only these fields shown):
+  allowed=False explicitDeny=False matchedStatements=0
+  resource=arn:aws:ec2:eu-west-2::image/ami-057b46c043e81dcf4
+  request context: ec2:Owner = amazon, ec2:Public = true, ec2:ImageType = machine,
+                   ec2:RootDeviceType = ebs, aws:Region = eu-west-2
+
+AMI (ec2 describe-images):
+  OwnerId=099720109477 (Canonical)  ImageOwnerAlias=amazon  Public=True  State=available
+  Name=ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-20261023
+  Description=Canonical, Ubuntu, 24.04, amd64 noble image  Architecture=x86_64  hvm/ebs
+
+Live policy vs template: gha-legacy-api-apply-network v1 == rendered apply-network template
+  (all 13 statements identical after normalisation) -> no drift.
+
+AWS policy simulator against the LIVE role, image ARN above:
+  ec2:Owner=amazon          -> implicitDeny (0 matched statements)   <- what AWS sends
+  ec2:Owner=099720109477    -> allowed      (1 matched statement)
+  ec2:Owner=123456789012    -> implicitDeny
+  ec2:Owner=aws-marketplace -> implicitDeny
+
+Root cause: IAM evaluates ec2:Owner as the image's owner ALIAS when it has one. Canonical's
+official AMIs carry the alias "amazon", so Ec2RunFromCanonicalUbuntuOnly (ec2:Owner =
+099720109477 only) can never match them. Earlier simulator runs (Tasks 11-12) supplied
+ec2:Owner=099720109477 as context, so they could not reveal this.
+
+Fix (local, not applied): ec2:Owner in ["099720109477", "amazon"] for image and snapshot.
+
+AWS policy simulator on the corrected rendered policies:
+179 matched, 0 mismatched, 179 scenarios
+PASS apply ec2:RunInstances arn:aws:ec2:eu-west-2::image/ami-x expected=denied aws=implicitDeny
+PASS apply ec2:ModifySnapshotAttribute arn:aws:ec2:eu-west-2::snapshot/snap-1 expected=explicitDeny aws=explicitDeny
+PASS apply ec2:ModifySnapshotAttribute arn:aws:ec2:eu-west-2::snapshot/snap-1 expected=explicitDeny aws=explicitDeny
+PASS apply ec2:RunInstances arn:aws:ec2:eu-west-2::image/ami-057b46c043e81dcf4 expected=allowed aws=allowed
+PASS apply ec2:RunInstances arn:aws:ec2:eu-west-2::snapshot/snap-1 expected=allowed aws=allowed
+PASS apply ec2:RunInstances arn:aws:ec2:eu-west-2::image/ami-other expected=implicitDeny aws=implicitDeny
+PASS apply ec2:RunInstances arn:aws:ec2:eu-west-2::image/ami-market expected=implicitDeny aws=implicitDeny
+PASS apply ec2:RunInstances arn:aws:ec2:eu-west-2::image/ami-x expected=implicitDeny aws=implicitDeny AMI without an owner in the request
+PASS apply ec2:RunInstances arn:aws:ec2:us-east-1::image/ami-1 expected=explicitDeny aws=explicitDeny
+
+Read-only bootstrap plan (local state unchanged by the plan; saved as terraform/bootstrap/bootstrap-iam-fix.tfplan, gitignored):
+  # aws_iam_policy.apply_write["apply-network"] will be updated in-place
+                              ~ "ec2:Owner" = "099720109477" -> [
+                                  + "099720109477",
+                                  + "amazon",
+Plan: 0 to add, 1 to change, 0 to destroy.

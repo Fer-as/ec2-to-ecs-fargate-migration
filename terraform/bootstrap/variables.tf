@@ -118,6 +118,11 @@ variable "legacy_instance_type" {
   default     = "t3.micro"
 }
 
+# IAM evaluates ec2:Owner as the image's owner ALIAS when it has one. Canonical's official
+# Ubuntu AMIs have OwnerId 099720109477 but ImageOwnerAlias "amazon", so RunInstances sees
+# ec2:Owner = "amazon" (Task 22: run 40538277000 was denied with the account ID alone).
+# apply-network.json.tftpl therefore accepts this account ID OR "amazon"; the platform's
+# data.aws_ami still selects only images owned by 099720109477.
 variable "legacy_ami_owner" {
   description = "AWS account that must own the AMI the apply role launches from (099720109477 = Canonical, Ubuntu)."
   type        = string

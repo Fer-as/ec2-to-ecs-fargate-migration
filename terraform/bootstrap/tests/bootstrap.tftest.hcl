@@ -249,3 +249,19 @@ run "apply_policies_fit_iam_size_limits" {
     error_message = "All three write policies must be attached to the apply role only."
   }
 }
+
+run "canonical_ami_owner_alias_is_accepted" {
+  command = plan
+
+  # Task 22: IAM sees ec2:Owner = "amazon" for Canonical's Ubuntu AMIs (owner alias);
+  # only the Canonical account ID and that alias are accepted, for image and snapshot.
+  assert {
+    condition = anytrue([
+      for s in local.apply_write_statements :
+      s.Sid == "Ec2RunFromCanonicalUbuntuOnly" &&
+      toset(s.Condition.StringEquals["ec2:Owner"]) == toset(["099720109477", "amazon"]) &&
+      toset(s.Resource) == toset(["arn:aws:ec2:eu-west-2::image/*", "arn:aws:ec2:eu-west-2::snapshot/*"])
+    ])
+    error_message = "RunInstances images/snapshots must be limited to the Canonical account ID or its owner alias."
+  }
+}

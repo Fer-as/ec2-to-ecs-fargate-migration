@@ -6,7 +6,10 @@
 
 Checks (all must pass):
   1. ECS service (if it exists) is stable: one deployment, rolloutState COMPLETED,
-     runningCount == desiredCount   (`aws ecs wait services-stable` first)
+     runningCount == desiredCount, no pending tasks. `aws ecs wait services-stable`
+     first, then poll (default up to 5 minutes) because ECS sets rolloutState COMPLETED
+     after the waiter's conditions hold; rolloutState FAILED, a missing service or an
+     AWS error fails at once
   2. ALB target health: legacy EC2 target healthy (it is the rollback target);
      ECS targets healthy and at least desiredCount of them
   3. HTTP 200 from <alb_url>/health and <alb_url>/ready
@@ -45,14 +48,44 @@ def http_status(url, timeout=5):
 
 class Verifier:
     def __init__(self, outputs, region, aws=aws_cli, http=http_status, sleep=time.sleep,
-                 http_attempts=10, http_interval=6):
+                 http_attempts=10, http_interval=6, rollout_timeout=300, rollout_interval=15):
         self.o, self.region = outputs, region
         self.aws, self.http, self.sleep = aws, http, sleep
         self.http_attempts, self.http_interval = http_attempts, http_interval
+        # `ecs wait services-stable` only checks "one deployment, running == desired". ECS
+        # marks the deployment rolloutState COMPLETED somewhat later (circuit breaker), so
+        # poll for up to rollout_timeout seconds after the waiter (Task 28: run 40556838063).
+        self.rollout_attempts = max(1, -(-rollout_timeout // max(rollout_interval, 1)))
+        self.rollout_interval = rollout_interval
         self.failures, self.desired = [], None
 
     def call(self, *args, **kw):
         return self.aws(list(args), self.region, **kw)
+
+    def describe_service(self, cluster, service):
+        """Return the service dict, or raise ValueError for a missing service / invalid response."""
+        resp = self.call("ecs", "describe-services", "--cluster", cluster, "--services", service)
+        if not isinstance(resp, dict):
+            raise ValueError(f"invalid describe-services response: {type(resp).__name__}")
+        missing = [f.get("reason") for f in resp.get("failures") or [] if isinstance(f, dict)]
+        services = resp.get("services") or []
+        if not services:
+            raise ValueError(f"ECS service {service} not found ({', '.join(filter(None, missing)) or 'no services'})")
+        svc = services[0]
+        if not isinstance(svc, dict) or not isinstance(svc.get("deployments"), list):
+            raise ValueError("invalid describe-services response: no deployments list")
+        if svc.get("status") not in (None, "ACTIVE"):
+            raise ValueError(f"ECS service {service} is {svc.get('status')}, not ACTIVE")
+        return svc
+
+    @staticmethod
+    def rollout_state(svc):
+        deployments = svc.get("deployments", [])
+        primary = next((d for d in deployments if d.get("status") == "PRIMARY"), {})
+        done = (len(deployments) == 1 and primary.get("rolloutState") == "COMPLETED"
+                and svc.get("runningCount") == svc.get("desiredCount")
+                and (svc.get("pendingCount") or 0) == 0)
+        return deployments, primary, done
 
     def check_service(self):
         cluster, service = self.o.get("ecs_cluster_name"), self.o.get("ecs_service_name")
@@ -63,17 +96,36 @@ class Verifier:
             self.call("ecs", "wait", "services-stable", "--cluster", cluster, "--services", service)
         except Exception as exc:  # noqa: BLE001 - report and continue to diagnostics
             self.failures.append(f"ECS service did not become stable: {exc}")
-        svc = self.call("ecs", "describe-services", "--cluster", cluster, "--services", service)["services"][0]
-        deployments = svc.get("deployments", [])
-        primary = next((d for d in deployments if d.get("status") == "PRIMARY"), {})
-        self.desired = svc.get("desiredCount", 0)
-        print(f"ECS {service}: desired={self.desired} running={svc.get('runningCount')} "
-              f"deployments={len(deployments)} rollout={primary.get('rolloutState')}")
+
+        svc = None
+        for attempt in range(1, self.rollout_attempts + 1):
+            try:
+                svc = self.describe_service(cluster, service)
+            except Exception as exc:  # noqa: BLE001 - AWS error, missing service, bad response: fail now
+                self.failures.append(f"ECS service check failed: {exc}")
+                return
+            deployments, primary, done = self.rollout_state(svc)
+            self.desired = svc.get("desiredCount", 0)
+            print(f"ECS {service}: desired={self.desired} running={svc.get('runningCount')} "
+                  f"pending={svc.get('pendingCount')} deployments={len(deployments)} "
+                  f"rollout={primary.get('rolloutState')} (check {attempt}/{self.rollout_attempts})")
+            if primary.get("rolloutState") == "FAILED":
+                self.failures.append(f"ECS rollout FAILED: {primary.get('rolloutStateReason', 'no reason given')}")
+                return
+            if done:
+                return
+            if attempt < self.rollout_attempts:
+                self.sleep(self.rollout_interval)
+
+        # Timed out: report the last observed state
+        deployments, primary, _ = self.rollout_state(svc)
         if len(deployments) != 1 or primary.get("rolloutState") != "COMPLETED":
             self.failures.append(f"ECS rollout not completed (deployments={len(deployments)}, "
                                  f"rolloutState={primary.get('rolloutState')})")
         if svc.get("runningCount") != self.desired:
             self.failures.append(f"ECS running {svc.get('runningCount')} != desired {self.desired}")
+        if svc.get("pendingCount"):
+            self.failures.append(f"ECS pending tasks: {svc.get('pendingCount')}")
 
     def target_states(self, tg_arn):
         health = self.call("elbv2", "describe-target-health", "--target-group-arn", tg_arn)
@@ -159,6 +211,8 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--outputs", required=True, help="`terraform output -json` file")
     ap.add_argument("--region", required=True)
+    ap.add_argument("--rollout-timeout", type=int, default=300,
+                    help="seconds to wait for ECS rolloutState COMPLETED after the stability waiter")
     args = ap.parse_args(argv)
     try:
         with open(args.outputs, encoding="utf-8") as fh:
@@ -169,7 +223,7 @@ def main(argv=None):
     except (OSError, ValueError, AttributeError) as exc:
         print(f"verify_rollout: {exc}", file=sys.stderr)
         return 2
-    return Verifier(outputs, args.region).run()
+    return Verifier(outputs, args.region, rollout_timeout=args.rollout_timeout).run()
 
 
 if __name__ == "__main__":

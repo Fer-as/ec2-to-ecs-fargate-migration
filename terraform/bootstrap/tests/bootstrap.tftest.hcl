@@ -154,6 +154,20 @@ run "apply_role_has_no_service_wide_write" {
     error_message = "Unexpected Allow on Resource \"*\" in the apply policy."
   }
 
+  # Task 33: DisassociateAddress on a released association is authorised against the literal
+  # resource "...:*/*". The template escape $${*} must render to IAM's ${*} (a literal "*"),
+  # never to a bare glob that would match every EC2 resource.
+  assert {
+    condition = length([
+      for s in local.apply_write_statements : s
+      if s.Sid == "Ec2DisassociateStaleEipAssociation" && s.Effect == "Allow" &&
+      s.Action == "ec2:DisassociateAddress" &&
+      s.Resource == "arn:aws:ec2:eu-west-2:111122223333:$${*}/$${*}" &&
+      s.Condition.StringEquals["aws:RequestedRegion"] == "eu-west-2"
+    ]) == 1
+    error_message = "The stale EIP association allow must be DisassociateAddress on the literal */* resource only."
+  }
+
   assert {
     condition = anytrue([
       for s in local.apply_write_statements :

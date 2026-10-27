@@ -53,6 +53,8 @@ def _list(v):
 def _like(value, pattern, case=True):
     if not case:
         value, pattern = value.lower(), pattern.lower()
+    # IAM policy-variable escapes: ${*} and ${?} match a literal * or ?, ${$} a literal $
+    pattern = pattern.replace("${*}", "[*]").replace("${?}", "[?]").replace("${$}", "$")
     return fnmatch.fnmatchcase(value, pattern)
 
 
@@ -499,3 +501,62 @@ def test_scalable_target_tag_read_statement_is_narrow():
             if st["Effect"] == "Allow":
                 for a in _list(st["Action"]):
                     assert a not in ("application-autoscaling:*", "application-autoscaling:List*"), (st["Sid"], a)
+
+
+# --- Task 33: DisassociateAddress on an association that no longer exists -------------------
+# Deploy 40577733449 replaced the EC2 instance (destroy, then create). Terminating the old
+# instance released the Elastic IP, so the aws_eip update then called DisassociateAddress with
+# the association ID from the saved plan. EC2 could not resolve that association, so it
+# authorised the call against the unresolved resource "arn:aws:ec2:<region>:<account>:*/*"
+# with no resource tags: UnauthorizedOperation. With permission, EC2 returns
+# InvalidAssociationID.NotFound, which the provider treats as success.
+# The fix allows only that literal resource (IAM "${*}" escape), not "*" or a glob.
+
+STALE_ASSOC = f"{EC2}:*/*"  # the literal resource ARN from the decoded authorization message
+
+
+def test_disassociate_of_a_released_association_is_allowed():
+    assert decide("apply", "ec2:DisassociateAddress", STALE_ASSOC) == "allowed"
+
+
+@pytest.mark.parametrize("action,resource,ctx,expected", [
+    # the stale-association allow is region-bound
+    ("ec2:DisassociateAddress", f"arn:aws:ec2:us-east-1:{ACCOUNT}:*/*", {"aws:RequestedRegion": "us-east-1"},
+     "explicitDeny"),
+    ("ec2:DisassociateAddress", "arn:aws:ec2:eu-west-2:999988887777:*/*", {}, "implicitDeny"),
+    # it never reaches a real Elastic IP of another project
+    ("ec2:DisassociateAddress", f"{EC2}:elastic-ip/eipalloc-other", OTHER, "implicitDeny"),
+    ("ec2:DisassociateAddress", f"{EC2}:elastic-ip/eipalloc-untagged", {}, "implicitDeny"),
+    # and no other action is allowed on the unresolved resource
+    ("ec2:ReleaseAddress", STALE_ASSOC, {}, "implicitDeny"),
+    ("ec2:AssociateAddress", STALE_ASSOC, {}, "implicitDeny"),
+    ("ec2:TerminateInstances", STALE_ASSOC, {}, "implicitDeny"),
+    ("ec2:DisassociateRouteTable", STALE_ASSOC, {}, "implicitDeny"),
+    ("ec2:CreateTags", STALE_ASSOC, {}, "implicitDeny"),
+])
+def test_stale_association_allow_does_not_widen_access(action, resource, ctx, expected):
+    assert decide("apply", action, resource, **ctx) == expected
+
+
+def test_project_eip_reassociation_still_works():
+    # live association: EC2 resolves the Elastic IP, the tag-scoped statement applies
+    assert allowed("apply", "ec2:DisassociateAddress", f"{EC2}:elastic-ip/eipalloc-1", **OWNED)
+    for resource in (f"{EC2}:elastic-ip/eipalloc-1", f"{EC2}:instance/i-new"):
+        assert allowed("apply", "ec2:AssociateAddress", resource, **OWNED)
+
+
+def test_stale_association_statement_is_narrow():
+    stmt = next(s for s in load("apply-network")["Statement"] if s["Sid"] == "Ec2DisassociateStaleEipAssociation")
+    assert stmt["Effect"] == "Allow" and stmt["Action"] == "ec2:DisassociateAddress"
+    # literal "*/*" via the IAM escape: a bare "*" here would match every EC2 resource ARN
+    assert stmt["Resource"] == f"{EC2}:${{*}}/${{*}}"
+    assert stmt["Condition"] == {"StringEquals": {"aws:RequestedRegion": REGION}}
+    assert not _like(f"{EC2}:elastic-ip/eipalloc-1", stmt["Resource"])
+    assert not _like(f"{EC2}:network-interface/eni-1", stmt["Resource"])
+    assert _like(STALE_ASSOC, stmt["Resource"])
+
+
+def test_evaluator_escapes_match_iam_semantics():
+    assert _like("a*b", "a${*}b") and not _like("axb", "a${*}b")
+    assert _like("a?b", "a${?}b") and not _like("axb", "a${?}b")
+    assert _like("a$b", "a${$}b")

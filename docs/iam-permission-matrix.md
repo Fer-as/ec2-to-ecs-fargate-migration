@@ -38,7 +38,7 @@ characters, so the bootstrap apply would have failed. Rendered sizes now: apply 
 | `aws_route_table`, routes, associations | CreateRouteTable, CreateRoute, AssociateRouteTable | Describe* | ReplaceRoute | DeleteRoute, Disassociate, DeleteRouteTable | RequestTag; ResourceTag on route-table, subnet, vpc, igw |
 | `aws_security_group`, `aws_vpc_security_group_*_rule` | CreateSecurityGroup, Authorize* | Describe* | ModifySecurityGroupRules, UpdateSecurityGroupRuleDescriptions* | Revoke*, DeleteSecurityGroup | SG: RequestTag/ResourceTag; `security-group-rule` child: no tag condition (only reachable through a project SG) |
 | VPC default security group | **Not managed (Task 12)** | — | — | — | No permission on untagged security groups. See section 5 |
-| `aws_eip` (x2) | AllocateAddress | Describe* | AssociateAddress, DisassociateAddress | ReleaseAddress | RequestTag; ResourceTag on eip, instance; ENI child unconditioned |
+| `aws_eip` (x2) | AllocateAddress | Describe* | AssociateAddress, DisassociateAddress | ReleaseAddress | RequestTag; ResourceTag on eip, instance; ENI child unconditioned. **Released association (Task 33):** DisassociateAddress on the literal resource `arn:aws:ec2:<region>:<account>:*/*` only (see section 4) |
 | `aws_nat_gateway` | CreateNatGateway (natgw + eip + subnet + vpc) | Describe* | — | DeleteNatGateway | RequestTag; ResourceTag on eip, subnet, vpc |
 | `aws_vpc_endpoint` (S3, DynamoDB gateway) | CreateVpcEndpoint | Describe* | ModifyVpcEndpoint | DeleteVpcEndpoints | RequestTag; ResourceTag on vpc, route-table |
 | `aws_flow_log` | CreateFlowLogs (+ iam:PassRole to vpc-flow-logs) | Describe* | — | DeleteFlowLogs | RequestTag; ResourceTag on vpc |
@@ -92,6 +92,21 @@ ECS namespace and dimension keys). `Ec2RetagProjectResources` uses
 `StringEqualsIfExists` on `aws:RequestTag/Project`: tagging a project-owned resource
 with other keys is allowed, but a request that includes `Project` must keep it as
 `legacy-api`, so ownership cannot be moved.
+
+`Ec2DisassociateStaleEipAssociation` (Task 33, deploy 40577733449). Replacing the EC2
+instance terminates the old one first, which releases its Elastic IP. The `aws_eip` update
+then calls DisassociateAddress with the association ID it read during the plan. EC2 cannot
+resolve an association that no longer exists, so it authorises the call against the
+resource `arn:aws:ec2:<region>:<account>:*/*` with no resource tags. No tag-scoped
+statement can match that, so the call fails with UnauthorizedOperation. With permission,
+EC2 returns `InvalidAssociationID.NotFound`, which the provider treats as success (CloudTrail
+shows exactly this for admin callers). The statement allows only that **literal** resource,
+written `$${*}/$${*}` in the template and rendered as IAM's `${*}` escape for a literal `*`.
+It covers one action and is bound to the region with `aws:RequestedRegion`. The IAM
+simulator, run against the live apply role plus this statement, allows it only for the
+literal `*/*` in eu-west-2. It does not match a real Elastic IP or network interface, other
+regions, other accounts, or any other action. A plain `*` or `*/*` glob would have allowed
+DisassociateAddress on every Elastic IP in the account.
 
 ## 5. Residual risks and where it may be too restrictive
 

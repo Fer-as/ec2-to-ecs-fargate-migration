@@ -39,6 +39,9 @@
        "arn:${partition}:ec2:${region}:${account_id}:volume/*",
        "arn:${partition}:ec2:${region}:${account_id}:network-interface/*",
        "arn:${partition}:ec2:${region}:${account_id}:security-group-rule/*"]},
+    {"Sid": "Ec2DisassociateStaleEipAssociation", "Effect": "Allow", "Action": "ec2:DisassociateAddress",
+     "Resource": "arn:${partition}:ec2:${region}:${account_id}:$${*}/$${*}",
+     "Condition": {"StringEquals": {"aws:RequestedRegion": "${region}"}}},
     {"Sid": "Ec2ManageProjectTaggedResources", "Effect": "Allow",
      "Action": [
        "ec2:CreateSubnet", "ec2:CreateRouteTable", "ec2:CreateSecurityGroup", "ec2:CreateNatGateway",

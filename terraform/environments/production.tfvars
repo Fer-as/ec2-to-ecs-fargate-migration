@@ -11,7 +11,7 @@ ecs_service_enabled = true
 
 # "memory" until the table is seeded and the write freeze starts, then "dynamodb"
 # (replaces the EC2 instance)
-legacy_storage_backend = "memory"
+legacy_storage_backend = "dynamodb"
 
 # 0 = EC2 100% | 1 = EC2 90 / ECS 10 | 2 = 50 / 50 | 3 = ECS 100%   (rollback = 0)
 traffic_stage = 0

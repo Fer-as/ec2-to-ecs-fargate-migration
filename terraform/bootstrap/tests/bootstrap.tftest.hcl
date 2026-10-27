@@ -265,3 +265,26 @@ run "canonical_ami_owner_alias_is_accepted" {
     error_message = "RunInstances images/snapshots must be limited to the Canonical account ID or its owner alias."
   }
 }
+
+run "scalable_target_tag_read_for_plan_and_apply_only" {
+  command = plan
+
+  # Task 26: provider 5.100.0 reads aws_appautoscaling_target tags on create and refresh.
+  # The read is in platform-read (plan + apply roles), scoped to scalable targets in this
+  # account and region; the image-push role does not get it.
+  assert {
+    condition = alltrue([
+      for p in [aws_iam_role_policy.plan.policy, aws_iam_role_policy.apply_read.policy] : anytrue([
+        for s in jsondecode(p).Statement :
+        s.Sid == "ReadScalableTargetTags" && s.Effect == "Allow" &&
+        s.Action == "application-autoscaling:ListTagsForResource" &&
+        s.Resource == "arn:aws:application-autoscaling:eu-west-2:111122223333:scalable-target/*"
+      ])
+    ])
+    error_message = "Plan and apply roles must read scalable-target tags in this account/region only."
+  }
+  assert {
+    condition     = !strcontains(aws_iam_role_policy.image_push.policy, "application-autoscaling")
+    error_message = "The image-push role must not get Application Auto Scaling access."
+  }
+}

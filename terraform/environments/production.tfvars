@@ -7,7 +7,7 @@
 #
 # First deployment: ecs_service_enabled = false (image + seed task definition only).
 # After the seed task has run once: ecs_service_enabled = true.
-ecs_service_enabled = false
+ecs_service_enabled = true
 
 # "memory" until the table is seeded and the write freeze starts, then "dynamodb"
 # (replaces the EC2 instance)

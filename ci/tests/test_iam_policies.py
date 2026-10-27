@@ -443,3 +443,59 @@ REALISTIC = [
 @pytest.mark.parametrize("name,action,resource,ctx,expected", REALISTIC, ids=[r[0] for r in REALISTIC])
 def test_realistic_contexts(name, action, resource, ctx, expected):
     assert decide("apply", action, resource, **ctx) == expected
+
+
+# --- Task 26: Application Auto Scaling tag read for the ECS scalable target ---------------
+# AWS provider 5.100.0 tags aws_appautoscaling_target (@Tags(identifierAttribute="arn")) and
+# calls ListTagsForResource after create and on every refresh. Both pipeline roles read
+# through the shared platform-read policy; the image-push role must not.
+
+ST = f"arn:aws:application-autoscaling:{REGION}:{ACCOUNT}:scalable-target/0123456789abcdef0123456789abcdef"
+ST_OTHER_REGION = f"arn:aws:application-autoscaling:us-east-1:{ACCOUNT}:scalable-target/0123456789abcdef0123456789abcdef"
+ST_OTHER_ACCOUNT = f"arn:aws:application-autoscaling:{REGION}:999988887777:scalable-target/0123456789abcdef0123456789abcdef"
+ECS_DIMS = {"application-autoscaling:service-namespace": "ecs",
+            "application-autoscaling:scalable-dimension": "ecs:service:DesiredCount"}
+
+SCALABLE_TARGET_READS = [
+    ("plan", "application-autoscaling:ListTagsForResource", ST, {}, "allowed"),
+    ("apply", "application-autoscaling:ListTagsForResource", ST, {}, "allowed"),
+    ("image_push", "application-autoscaling:ListTagsForResource", ST, {}, "implicitDeny"),
+    ("plan", "application-autoscaling:ListTagsForResource", ST_OTHER_REGION, {"aws:RequestedRegion": "us-east-1"}, "implicitDeny"),
+    ("apply", "application-autoscaling:ListTagsForResource", ST_OTHER_REGION, {"aws:RequestedRegion": "us-east-1"}, "explicitDeny"),
+    ("plan", "application-autoscaling:ListTagsForResource", ST_OTHER_ACCOUNT, {}, "implicitDeny"),
+    ("apply", "application-autoscaling:ListTagsForResource", ST_OTHER_ACCOUNT, {}, "implicitDeny"),
+    # the read statement grants no write: the plan role stays read-only
+    ("plan", "application-autoscaling:RegisterScalableTarget", ST, ECS_DIMS, "implicitDeny"),
+    ("plan", "application-autoscaling:PutScalingPolicy", ST, ECS_DIMS, "implicitDeny"),
+    ("plan", "application-autoscaling:DeleteScalingPolicy", ST, ECS_DIMS, "implicitDeny"),
+    ("plan", "application-autoscaling:TagResource", ST, {}, "implicitDeny"),
+    ("plan", "application-autoscaling:PutScheduledAction", ST, ECS_DIMS, "implicitDeny"),
+    # apply role: unchanged write scope (ECS desired count only), nothing new
+    ("apply", "application-autoscaling:RegisterScalableTarget", ST, dict(ECS_DIMS, **{"aws:RequestTag/Project": PROJECT}), "allowed"),
+    ("apply", "application-autoscaling:RegisterScalableTarget", ST,
+     {"application-autoscaling:service-namespace": "dynamodb",
+      "application-autoscaling:scalable-dimension": "dynamodb:table:ReadCapacityUnits"}, "implicitDeny"),
+    ("apply", "application-autoscaling:PutScheduledAction", ST, ECS_DIMS, "implicitDeny"),
+    ("image_push", "application-autoscaling:DescribeScalableTargets", "*", {}, "implicitDeny"),
+]
+
+
+@pytest.mark.parametrize("role,action,resource,ctx,expected", SCALABLE_TARGET_READS,
+                         ids=[f"{r}-{a.split(':')[1]}-{(res.split(':') + ['', '', '', 'star'])[3] or 'star'}-{e}" for r, a, res, _, e in SCALABLE_TARGET_READS])
+def test_scalable_target_tag_read(role, action, resource, ctx, expected):
+    assert decide(role, action, resource, **ctx) == expected
+
+
+def test_scalable_target_tag_read_statement_is_narrow():
+    stmts = [s for s in load("platform-read")["Statement"] if s["Sid"] == "ReadScalableTargetTags"]
+    assert len(stmts) == 1
+    s = stmts[0]
+    assert s["Effect"] == "Allow" and s["Action"] == "application-autoscaling:ListTagsForResource"
+    assert s["Resource"] == f"arn:aws:application-autoscaling:{REGION}:{ACCOUNT}:scalable-target/*"
+    assert "Condition" not in s
+    # no other statement grants Application Auto Scaling access by wildcard
+    for p in ROLES["plan"] + ROLES["apply"] + ROLES["image_push"]:
+        for st in p["Statement"]:
+            if st["Effect"] == "Allow":
+                for a in _list(st["Action"]):
+                    assert a not in ("application-autoscaling:*", "application-autoscaling:List*"), (st["Sid"], a)

@@ -471,3 +471,60 @@ run "workloads_never_use_the_default_security_group" {
     error_message = "Interface endpoints would need a security group; only gateway endpoints are expected."
   }
 }
+
+# Task 21 regression: CloudWatch requires every entry of properties.metrics to be an
+# ARRAY ([namespace, metric, dim, value, ..., {options}]). flatten() once collapsed these
+# into one flat list and AWS rejected the dashboard (112 validation errors).
+run "dashboard_metrics_are_nested_arrays" {
+  command = plan
+
+  # The dashboard embeds these dimensions; pin them so the body is known at plan time
+  override_resource {
+    target          = aws_lb.app
+    override_during = plan
+    values = {
+      arn        = "arn:aws:elasticloadbalancing:eu-west-2:111122223333:loadbalancer/app/legacy-api-production/0123456789abcdef"
+      arn_suffix = "app/legacy-api-production/0123456789abcdef"
+    }
+  }
+  override_resource {
+    target          = aws_lb_target_group.ecs
+    override_during = plan
+    values = {
+      arn        = "arn:aws:elasticloadbalancing:eu-west-2:111122223333:targetgroup/legacy-api-production-ecs/0123456789abcdef"
+      arn_suffix = "targetgroup/legacy-api-production-ecs/0123456789abcdef"
+    }
+  }
+  override_resource {
+    target          = aws_lb_target_group.ec2
+    override_during = plan
+    values = {
+      arn        = "arn:aws:elasticloadbalancing:eu-west-2:111122223333:targetgroup/legacy-api-production-ec2/0123456789abcdef"
+      arn_suffix = "targetgroup/legacy-api-production-ec2/0123456789abcdef"
+    }
+  }
+
+  assert {
+    condition = alltrue(flatten([
+      for w in jsondecode(aws_cloudwatch_dashboard.migration.dashboard_body).widgets : [
+        for m in w.properties.metrics : can(m[0]) && can(regex("^[A-Za-z]+/[A-Za-z]+$", m[0])) && can(m[1])
+      ]
+    ]))
+    error_message = "Every dashboard metric must be an array starting with a namespace and a metric name."
+  }
+
+  assert {
+    condition = [
+      for w in jsondecode(aws_cloudwatch_dashboard.migration.dashboard_body).widgets : length(w.properties.metrics)
+    ] == [2, 4, 5, 2, 2, 2]
+    error_message = "Expected panels: requests (EC2, ECS), healthy+unhealthy x2, 4xx/5xx x2 + ALB 5xx, p95 x2, ECS CPU+memory, desired+running."
+  }
+
+  assert {
+    condition = toset(flatten([
+      for w in jsondecode(aws_cloudwatch_dashboard.migration.dashboard_body).widgets : [for m in w.properties.metrics : m[1]]
+      ])) == toset(["RequestCount", "HealthyHostCount", "UnHealthyHostCount", "HTTPCode_Target_5XX_Count", "HTTPCode_Target_4XX_Count",
+    "HTTPCode_ELB_5XX_Count", "TargetResponseTime", "CPUUtilization", "MemoryUtilization", "DesiredTaskCount", "RunningTaskCount"])
+    error_message = "A dashboard panel lost a metric."
+  }
+}

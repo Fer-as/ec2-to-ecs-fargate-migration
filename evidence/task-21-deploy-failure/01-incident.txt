@@ -1,0 +1,48 @@
+Task 21 - First platform apply partially failed (GitHub run 40530861020, commit a5aa42d)
+=====================================================================================
+Timeline (UTC, 2026-10-27): plan saved 15:28 (Plan: 65 to add, 0 to change, 0 to destroy,
+reviewed in Task 20) -> approved by the owner -> apply failed; state written 15:49.
+
+Errors from the public job log (account redacted):
+  Error: opening S3 object source (./app.zip): open ./app.zip: no such file or directory
+    with aws_s3_object.app
+  Error: putting CloudWatch Dashboard (legacy-api-production-migration): ... StatusCode: 400,
+    InvalidParameterInput: The dashboard body is invalid, there are 112 validation errors
+    with aws_cloudwatch_dashboard.migration
+
+Root causes (confirmed in code):
+  1. data.archive_file.app writes terraform/app.zip during `terraform plan` on the PLAN
+     runner. The apply job runs on a different runner with only the checkout and the saved
+     plan; aws_s3_object.app reads the file at apply time -> missing. The mocked
+     `terraform test` never applies, and a local plan+apply happens on one machine, so
+     neither could catch it.
+  2. monitoring.tf used flatten() around lists of metric arrays. flatten() is recursive:
+     [[ns, metric, dims..., {label}], ...] became one flat list of strings/objects.
+     Two widgets x 4 metric arrays x 7 elements = 56 loose entries; consistent with
+     112 errors (56 x 2), not individually confirmed.
+
+Read-only state of AWS after the failure (Task 21, 15:5x UTC):
+  remote state: present (legacy-api/platform.tfstate, AES256), lock released
+  managed resources in state: 60 of 65; missing: aws_s3_object.app,
+    aws_cloudwatch_dashboard.migration, aws_instance.app, aws_eip.app,
+    aws_lb_target_group_attachment.ec2
+  live chargeable: NAT gateway + EIP, ALB (2 AZs) + its public IPv4; no EC2, no ECS
+    service, DynamoDB table empty (deletion protection on), ALB deletion protection on,
+    bundle bucket empty
+
+Fixes (local, not yet committed):
+  deploy.yml: plan job uploads the exact terraform/app.zip beside the saved plan
+    (plans/legacy-api/<run>-<attempt>/app.zip, SSE AES256), outputs its SHA-256; the
+    apply job downloads it and runs `sha256sum -c` before init/apply; fails closed when
+    the file or checksum is missing or different. No IAM change (plan role PutObject /
+    apply role GetObject on plans/legacy-api/* already exist).
+  monitoring.tf: concat() of per-metric arrays instead of flatten().
+
+Tests added:
+  terraform/tests/platform.tftest.hcl  run "dashboard_metrics_are_nested_arrays"
+    passes with the fix; FAILS against the original monitoring.tf (array structure and
+    panel counts), so it would have caught the incident.
+  ci/tests/test_app_bundle_transfer.py  10 tests; executes the real deploy.yml step
+    scripts in bash with a fake AWS CLI (local temp dirs): round trip OK; missing bundle
+    fails the plan job; tampered bundle, missing object and absent/invalid checksum fail
+    the apply step. Nothing sent to AWS.

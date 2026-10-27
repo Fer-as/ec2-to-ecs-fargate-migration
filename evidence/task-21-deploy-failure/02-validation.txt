@@ -1,0 +1,69 @@
+Task 21 local validation
+
+== pytest ci/tests
+357 passed in 1.71s
+== pytest app suite
+62 passed, 24 skipped, 13 warnings in 0.71s
+== terraform terraform
+fmt ok
+Success! The configuration is valid.
+Success! 19 passed, 0 failed.
+== terraform terraform/bootstrap
+fmt ok
+Success! The configuration is valid.
+Success! 9 passed, 0 failed.
+== docker
+
+== actionlint 1.7.12
+failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine; check if the path is correct and if the daemon is running: open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified.
+exit=1
+== pre-commit (changed + new files)
+trim trailing whitespace.................................................................Passed
+fix end of files.........................................................................Passed
+mixed line ending........................................................................Passed
+check yaml...............................................................................Passed
+check for merge conflicts................................................................Passed
+check for case conflicts.................................................................Passed
+detect private key.......................................................................Passed
+check for added large files..............................................................Passed
+yamllint.................................................................................Passed
+ruff check...............................................................................Passed
+Detect hardcoded secrets.................................................................Passed
+terraform fmt............................................................................Passed
+== Checkov 3.3.26
+== actionlint 1.7.12
+.github/workflows/deploy.yml:254:9: shellcheck reported issue in this script: SC2129:style:12:1: Consider using { cmd1; cmd2; } >> file instead of individual redirects [shellcheck]
+    |
+254 |         run: |
+    |         ^~~~
+exit=1
+== Checkov 3.3.26
+Passed checks: 285, Failed checks: 0, Skipped checks: 30
+== gitleaks (working tree: changed paths)
+  .github: 3:58PM INF no leaks found
+  ci: 3:58PM INF no leaks found
+  terraform: 3:58PM INF no leaks found
+  docs: 3:58PM INF no leaks found
+== actionlint 1.7.12 (after SC2129 fix)
+exit=0
+== pytest ci/tests (after fix)
+357 passed in 1.57s
+check yaml...............................................................................Passed
+yamllint.................................................................................Passed
+
+== dashboard regression test, with fix
+  run "dashboard_metrics_are_nested_arrays"... pass
+Success! 19 passed, 0 failed.
+== same test against original HEAD monitoring.tf
+  run "dashboard_metrics_are_nested_arrays"... fail
+Error: Test assertion failed
+  on tests\platform.tftest.hcl line 508, in run "dashboard_metrics_are_nested_arrays":
+Every dashboard metric must be an array starting with a namespace and a
+Error: Test assertion failed
+  on tests\platform.tftest.hcl line 517, in run "dashboard_metrics_are_nested_arrays":
+Expected panels: requests (EC2, ECS), healthy+unhealthy x2, 4xx/5xx x2 + ALB
+Error: Invalid index
+  on tests\platform.tftest.hcl line 525, in run "dashboard_metrics_are_nested_arrays":
+Error: Invalid index
+  on tests\platform.tftest.hcl line 525, in run "dashboard_metrics_are_nested_arrays":
+Error: Invalid index

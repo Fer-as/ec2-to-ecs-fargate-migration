@@ -154,21 +154,21 @@ locals {
       title   = "Requests by target group (traffic split)", stat = "Sum",
       metrics = [for k, d in local.per_tg : [local.alb_ns, "RequestCount", "TargetGroup", d.TargetGroup, "LoadBalancer", d.LoadBalancer, { label = k }]]
     },
+    # Each metric must stay its own array: CloudWatch rejects a flat list. flatten() is
+    # recursive and would also flatten the metric arrays, so concat() per metric kind.
     {
       title = "Healthy / unhealthy targets", stat = "Minimum",
-      metrics = flatten([for k, d in local.per_tg : [
-        [local.alb_ns, "HealthyHostCount", "TargetGroup", d.TargetGroup, "LoadBalancer", d.LoadBalancer, { label = "${k} healthy" }],
-        [local.alb_ns, "UnHealthyHostCount", "TargetGroup", d.TargetGroup, "LoadBalancer", d.LoadBalancer, { label = "${k} unhealthy", stat = "Maximum" }],
-      ]])
+      metrics = concat(
+        [for k, d in local.per_tg : [local.alb_ns, "HealthyHostCount", "TargetGroup", d.TargetGroup, "LoadBalancer", d.LoadBalancer, { label = "${k} healthy" }]],
+        [for k, d in local.per_tg : [local.alb_ns, "UnHealthyHostCount", "TargetGroup", d.TargetGroup, "LoadBalancer", d.LoadBalancer, { label = "${k} unhealthy", stat = "Maximum" }]],
+      )
     },
     {
       title = "HTTP 4xx / 5xx", stat = "Sum",
       metrics = concat(
-        flatten([for k, d in local.per_tg : [
-          [local.alb_ns, "HTTPCode_Target_5XX_Count", "TargetGroup", d.TargetGroup, "LoadBalancer", d.LoadBalancer, { label = "${k} target 5xx" }],
-          [local.alb_ns, "HTTPCode_Target_4XX_Count", "TargetGroup", d.TargetGroup, "LoadBalancer", d.LoadBalancer, { label = "${k} target 4xx" }],
-        ]]),
-        [[local.alb_ns, "HTTPCode_ELB_5XX_Count", "LoadBalancer", local.lb_dim, { label = "ALB 5xx" }]]
+        [for k, d in local.per_tg : [local.alb_ns, "HTTPCode_Target_5XX_Count", "TargetGroup", d.TargetGroup, "LoadBalancer", d.LoadBalancer, { label = "${k} target 5xx" }]],
+        [for k, d in local.per_tg : [local.alb_ns, "HTTPCode_Target_4XX_Count", "TargetGroup", d.TargetGroup, "LoadBalancer", d.LoadBalancer, { label = "${k} target 4xx" }]],
+        [[local.alb_ns, "HTTPCode_ELB_5XX_Count", "LoadBalancer", local.lb_dim, { label = "ALB 5xx" }]],
       )
     },
     {

@@ -183,6 +183,7 @@ jobs:
       has_changes: ${{ steps.plan.outputs.has_changes }}
       plan_key: ${{ steps.store.outputs.plan_key }}
       plan_sha256: ${{ steps.store.outputs.plan_sha256 }}
+      app_zip_sha256: ${{ steps.store.outputs.app_zip_sha256 }}
     env:
       IMAGE_DIGEST: ${{ needs.publish.outputs.image_digest }}
       DEPLOYMENT_KIND: ${{ inputs.deployment_kind }}
@@ -253,19 +254,30 @@ jobs:
         run: |
           key="${TF_PLAN_PREFIX}/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/tfplan"
           sha=$(sha256sum terraform/tfplan | cut -d' ' -f1)
+          # The EC2 app bundle (data.archive_file.app) is written during plan; aws_s3_object.app
+          # reads it at apply time on ANOTHER runner. Ship the exact file the plan was made from.
+          if [ ! -s terraform/app.zip ]; then
+            echo "::error::terraform/app.zip was not produced by the plan"; exit 1
+          fi
+          zip_sha=$(sha256sum terraform/app.zip | cut -d' ' -f1)
           aws s3 cp terraform/tfplan "s3://${TF_STATE_BUCKET}/${key}" --sse AES256 --only-show-errors
+          aws s3 cp terraform/app.zip "s3://${TF_STATE_BUCKET}/${key%/tfplan}/app.zip" --sse AES256 --only-show-errors
           aws s3 cp "$RUNNER_TEMP/plan.log" "s3://${TF_STATE_BUCKET}/${key%/tfplan}/plan.log" --sse AES256 --only-show-errors
-          echo "plan_key=$key" >> "$GITHUB_OUTPUT"
-          echo "plan_sha256=$sha" >> "$GITHUB_OUTPUT"
+          {
+            echo "plan_key=$key"
+            echo "plan_sha256=$sha"
+            echo "app_zip_sha256=$zip_sha"
+          } >> "$GITHUB_OUTPUT"
           {
             echo ""
             echo "Saved plan: \`s3://<state-bucket>/${key}\` (sha256 \`${sha}\`)."
+            echo "EC2 app bundle planned: \`${key%/tfplan}/app.zip\` (sha256 \`${zip_sha}\`)."
             echo "Full plan text for reviewers: \`${key%/tfplan}/plan.log\` in the same bucket (AWS access required)."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove local plan files
         if: always()
-        run: rm -f terraform/tfplan "$RUNNER_TEMP/plan.json" "$RUNNER_TEMP/plan.log"
+        run: rm -f terraform/tfplan terraform/app.zip "$RUNNER_TEMP/plan.json" "$RUNNER_TEMP/plan.log"
 
   apply:
     name: Apply approved plan
@@ -282,6 +294,7 @@ jobs:
     env:
       PLAN_KEY: ${{ needs.plan.outputs.plan_key }}
       PLAN_SHA256: ${{ needs.plan.outputs.plan_sha256 }}
+      APP_ZIP_SHA256: ${{ needs.plan.outputs.app_zip_sha256 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -306,6 +319,17 @@ jobs:
         run: |
           aws s3 cp "s3://${TF_STATE_BUCKET}/${PLAN_KEY}" terraform/tfplan --only-show-errors
           echo "${PLAN_SHA256}  terraform/tfplan" | sha256sum -c -
+
+      # aws_s3_object.app uploads terraform/app.zip at apply time; it must be the exact
+      # bundle the approved plan was computed from (never regenerated here). Fails closed.
+      - name: Fetch the planned EC2 app bundle and verify its checksum
+        run: |
+          if [[ ! "$APP_ZIP_SHA256" =~ ^[a-f0-9]{64}$ ]]; then
+            echo "::error::no app bundle checksum from the plan job"; exit 1
+          fi
+          aws s3 cp "s3://${TF_STATE_BUCKET}/${PLAN_KEY%/tfplan}/app.zip" terraform/app.zip --only-show-errors
+          test -s terraform/app.zip
+          echo "${APP_ZIP_SHA256}  terraform/app.zip" | sha256sum -c -
 
       - name: terraform init (same backend and lock file)
         run: |
@@ -337,4 +361,4 @@ jobs:
 
       - name: Remove local plan
         if: always()
-        run: rm -f terraform/tfplan
+        run: rm -f terraform/tfplan terraform/app.zip

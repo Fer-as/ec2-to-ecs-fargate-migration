@@ -3,8 +3,11 @@
 A recording plan for the EC2 → ECS Fargate migration. It shows the code, the
 approval-gated pipeline, the live AWS platform and the verified results.
 
-> **Temporary links.** The AWS console pages and the ALB URL below only work while the
-> demo platform exists. They will stop working after teardown. The GitHub links stay.
+> **Historical guide.** The recording was made on 28 October 2026, and the AWS platform
+> was decommissioned the same day
+> ([teardown record](../evidence/aws-teardown-2026-10-28/README.md)). The AWS console
+> links and the ALB endpoints below are **inactive** and are kept only as a record of
+> what was shown. The GitHub links still work.
 
 **Read-only recording.** Use the browser and `GET` requests only. Do **not**:
 
@@ -32,7 +35,7 @@ stock 98) must stay unchanged.
 | Final restoration run (0/100) | https://github.com/Fer-as/ec2-to-ecs-fargate-migration/actions/runs/40739889980 |
 | Evidence summary | [evidence/live-migration-2026-10-28/README.md](../evidence/live-migration-2026-10-28/README.md) |
 
-AWS console, region **eu-west-2** (temporary):
+AWS console, region **eu-west-2** (historical, inactive since teardown):
 
 | What | Console link |
 |---|---|
@@ -44,7 +47,7 @@ AWS console, region **eu-west-2** (temporary):
 | CloudWatch alarms | https://eu-west-2.console.aws.amazon.com/cloudwatch/home?region=eu-west-2#alarmsV2:?search=legacy-api-production |
 | ECS logs | https://eu-west-2.console.aws.amazon.com/cloudwatch/home?region=eu-west-2#logsV2:log-groups/log-group/$252Fecs$252Flegacy-api-production |
 
-Read-only API endpoints, all `GET` (temporary; HTTP only):
+Read-only API endpoints, all `GET` (historical, inactive since teardown; HTTP only):
 
 - http://legacy-api-production-1605859241.eu-west-2.elb.amazonaws.com/health
 - http://legacy-api-production-1605859241.eu-west-2.elb.amazonaws.com/ready

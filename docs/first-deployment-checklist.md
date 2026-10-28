@@ -2,6 +2,9 @@
 
 **Executed in AWS on 27–28 October 2026**: bootstrap, deploys, seed, EC2 conversion, staged
 cutover, rollback and restoration. Results: [evidence/live-migration-2026-10-28](../evidence/live-migration-2026-10-28/README.md).
+**Decommissioned on 28 October 2026:** all AWS resources were removed through reviewed,
+saved plans (see [Executed teardown](#executed-teardown-28-october-2026) below), and the
+Deploy workflow is disabled.
 The phases below remain the reference runbook (the original text said "not yet executed",
 26 Oct 2026). Every state-changing step still needs your explicit decision at the time. Commands are PowerShell from the
 repository root unless stated. Design: [aws-platform.md](aws-platform.md); data rules:
@@ -241,6 +244,10 @@ publish job; video walkthrough.
 
 ## Phase 11: teardown and cost check
 
+The table below is the **original procedure**, written before deployment. The live teardown
+on 28 October 2026 did not follow it exactly; what was actually run is in
+[Executed teardown](#executed-teardown-28-october-2026) below.
+
 | # | Step | Expected | STOP if |
 |---|---|---|---|
 | 11.1 | Stage 0; export data if wanted (`aws dynamodb create-backup`) | — | — |
@@ -250,6 +257,51 @@ publish job; video walkthrough.
 | 11.5 | Delete ECR images (`aws ecr batch-delete-image`), then `terraform -chdir=terraform/bootstrap destroy` if you also remove the bootstrap; the state bucket has `prevent_destroy` (keep it, it costs cents, or follow [aws-platform.md §8](aws-platform.md)) | — | — |
 | 11.6 | Billable leftovers, all must be empty in eu-west-2: `aws ec2 describe-nat-gateways --filter Name=state,Values=available`, `aws ec2 describe-addresses`, `aws elbv2 describe-load-balancers`, `aws ecs list-clusters`, `aws ec2 describe-instances --filters Name=instance-state-name,Values=running`, `aws dynamodb list-tables`, `aws logs describe-log-groups --log-group-name-prefix /ecs/legacy-api` | No project resources | Anything left: remove it before the next billing hour |
 | 11.7 | GitHub: remove the repository variables (or the roles no longer exist anyway) | Deploy fails at preflight | — |
+
+### Executed teardown: 28 October 2026
+
+Each destructive step had its own explicit approval, and used a saved plan that was
+inspected first (both the human-readable output and the JSON resource actions).
+
+1. **Backups first.** Private, checksummed backups were taken of:
+   - the platform and bootstrap state;
+   - the exact deployed inputs, from the last approved saved plan;
+   - a read-only DynamoDB scan of all 6 items.
+
+   There was no Stage 0 deploy and no on-demand backup (11.1). The whole platform was
+   being removed, and the data was already exported.
+2. **Protection disabled with a targeted local plan, not through a Deploy run** (11.2).
+   - Every Deploy run, and an untargeted local plan, also replaced both ECS task
+     definitions and showed four policy updates as "known after apply". The "only those
+     attributes change" rule therefore could not be met.
+   - The targeted plan on `aws_lb.app` and `aws_dynamodb_table.app` gave 0 added,
+     2 changed, 0 destroyed.
+3. **Bundle bucket emptied** (11.3): its one object version was deleted by its exact
+   version ID; there were no delete markers.
+4. **Platform destroyed** (11.4): the reviewed saved `plan -destroy` was applied without
+   targeting. Result: 0 added, 0 changed, **70 destroyed**. The platform state was left
+   with 0 managed resources (serial 31).
+5. **Bootstrap cleaned up** (11.5).
+   - The 11 ECR images were deleted by digest after the platform destroy. The platform
+     root reads the image through a data source, so it had to come first.
+   - A reviewed **targeted** bootstrap plan was then applied: 0 added, 0 changed,
+     **16 destroyed**. It removed the ECR repository and lifecycle policy, the 3
+     GitHub Actions roles, 5 inline policies, 3 managed policies and 3 attachments.
+   - There was no blanket bootstrap destroy: `prevent_destroy` would fail it. The 7
+     state-bucket resources remain (serial 50).
+   - The GitHub OIDC provider is shared and read only as a data source. It was kept,
+     along with the 7 other projects' roles that trust it.
+6. **Leftover checks went beyond the 11.6 list.** They also covered:
+   - the AWS-created Container Insights log group, which was deleted separately;
+   - the autoscaling alarms, which AWS removed with the scaling policy;
+   - the ALB-owned public IPv4 addresses, VPC endpoints and network interfaces.
+
+   No project resources remain. Billing data lags, so Cost Explorer can't yet confirm
+   that the final charges have settled.
+7. **GitHub retired** (11.7): the Deploy workflow was disabled, and its repository
+   variables and secret were deleted. The workflow file and its run history are kept.
+
+Public record: [evidence/aws-teardown-2026-10-28](../evidence/aws-teardown-2026-10-28/README.md).
 
 ## Known issue to review before Stage 1
 

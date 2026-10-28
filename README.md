@@ -5,13 +5,27 @@ progressive, approval-gated ALB traffic cutover and shared DynamoDB storage. A d
 rollback and a restoration were also tested. The whole migration was run live in AWS
 (`eu-west-2`) on **28 October 2026**.
 
-| Final state | Cutover | Rollback | Verified data |
+> **Deployment status: decommissioned.**
+>
+> - The migration was completed on 28 October 2026. The rollback and the final
+>   restoration were tested successfully.
+> - A walkthrough video was recorded. The public link will be added here later.
+> - All AWS resources were deliberately decommissioned on 28 October 2026 to control
+>   costs, through reviewed, saved Terraform plans
+>   ([teardown record](evidence/aws-teardown-2026-10-28/README.md)).
+> - The live ALB URL and the AWS console links in this repository no longer work.
+> - The source code, Terraform, architecture diagrams, GitHub Actions history and
+>   sanitised evidence remain available.
+> - The [Deploy workflow](.github/workflows/deploy.yml) is kept as source but disabled.
+
+| Final migrated state (before teardown) | Cutover | Rollback | Verified data |
 |---|---|---|---|
 | EC2 0 % / ECS 100 %, 2 Fargate tasks in 2 AZs | 90/10 → 50/50 → 0/100, all PASS | 100 % ECS → 100 % EC2 → 100 % ECS, PASS | Orders written through each backend, read through the other |
 
 **Evidence:** [live migration results](evidence/live-migration-2026-10-28/README.md) ·
+[teardown record](evidence/aws-teardown-2026-10-28/README.md) ·
 **Architecture:** [diagrams](docs/architecture/README.md) ·
-**Recording guide:** [demo walkthrough](docs/demo-walkthrough.md)
+**Recording guide (historical):** [demo walkthrough](docs/demo-walkthrough.md)
 
 ## Project overview
 
@@ -72,7 +86,7 @@ All of the following was added for the migration:
   - read-only root filesystem;
   - the base image pinned by digest.
 - **Two tasks across two Availability Zones** in private subnets with no public IPs.
-  CPU target-tracking autoscaling runs from 2 to 4 tasks.
+  CPU target-tracking autoscaling was configured from 2 to 4 tasks.
 - **Terraform with separate roots:**
   - a [bootstrap](terraform/bootstrap/) root for the state bucket, ECR and the GitHub OIDC
     roles;
@@ -89,8 +103,8 @@ All of the following was added for the migration:
   - Terraform then applies exactly that plan, with its SHA-256 checked.
 - **Immutable images:** ECR tags are commit SHAs, tags can't be overwritten, and ECS
   pulls by digest.
-- **Shared DynamoDB persistence:** both EC2 and ECS run with `STORAGE_BACKEND=dynamodb`.
-  Each order and its stock decrement are written in one transaction. The table has
+- **Shared DynamoDB persistence:** both EC2 and ECS ran with `STORAGE_BACKEND=dynamodb`.
+  Each order and its stock decrement are written in one transaction. The table had
   point-in-time recovery and deletion protection.
 - **Progressive ALB weighted cutover** in stages 0 → 1 → 2 → 3.
 - **Verified rollback** to EC2 and restoration to ECS, both through the same reviewed
@@ -106,26 +120,32 @@ All of the following was added for the migration:
 
 ![Deployed platform architecture](docs/architecture/ec2-to-ecs-overview.png)
 
-What is deployed, as verified on 28 October 2026:
+What was deployed at the end of the live migration, as verified on 28 October 2026
+before teardown:
 
-- **Public ALB, HTTP :80.** One listener forwards to two target groups with Terraform-owned
-  weights (`traffic_stage` 0–3, now **3**). Two extra listener rules route
-  `X-Migration-Target: ec2|ecs`. They work only from a single operator `/32`, for
+- **Public ALB, HTTP :80.** One listener forwarded to two target groups with
+  Terraform-owned weights (`traffic_stage` 0–3). The last production traffic
+  configuration was stage **3**. Two extra listener rules routed
+  `X-Migration-Target: ec2|ecs`. They worked only from a single operator `/32`, for
   side-by-side verification.
-- **Legacy EC2, kept as the rollback target.** It runs Nginx → Gunicorn, still registered
-  and healthy at weight 0, and also reads and writes the shared DynamoDB table.
+- **Legacy EC2, kept as the rollback target.** It ran Nginx → Gunicorn, stayed registered
+  and healthy at weight 0, and also read and wrote the shared DynamoDB table.
 - **ECS Fargate service, 2 tasks** in two private subnets.
-  - Only the ALB security group can reach port 5000.
-  - Outbound traffic goes through a single NAT gateway (for ECR and logs) and through S3
+  - Only the ALB security group could reach port 5000.
+  - Outbound traffic went through a single NAT gateway (for ECR and logs) and through S3
     and DynamoDB gateway endpoints.
 - **DynamoDB `legacy-api-production`:** products, stock, an order counter and orders,
   shared by both backends.
 - **ECR, CloudWatch, Terraform and GitHub Actions:**
-  - images are built and scanned in CI, pushed by digest, and deployed through a saved
+  - images were built and scanned in CI, pushed by digest, and deployed through a saved
     Terraform plan;
-  - logs, alarms and the dashboard are in CloudWatch.
+  - logs, alarms and the dashboard were in CloudWatch.
 
-There is no HTTPS, ACM certificate or Route 53 record: the demo uses the ALB's HTTP
+The Terraform source and
+[terraform/environments/production.tfvars](terraform/environments/production.tfvars)
+describe this deployed architecture. They aren't infrastructure that is running now.
+
+There was no HTTPS, ACM certificate or Route 53 record: the demo used the ALB's HTTP
 hostname. Details: [docs/aws-platform.md](docs/aws-platform.md) and the
 [migration flow diagram](docs/architecture/migration-traffic-flow.png).
 
@@ -284,23 +304,43 @@ production system.
 | Acceptance checklist | [docs/acceptance-checklist.md](docs/acceptance-checklist.md) |
 | Security exceptions and IAM matrix | [docs/security-exceptions.md](docs/security-exceptions.md), [docs/iam-permission-matrix.md](docs/iam-permission-matrix.md) |
 | Earlier task evidence (container, IAM, pre-commit, incidents) | [evidence/](evidence/) |
-| Recording guide | [docs/demo-walkthrough.md](docs/demo-walkthrough.md) |
+| AWS teardown record (28 Oct 2026) | [evidence/aws-teardown-2026-10-28/](evidence/aws-teardown-2026-10-28/README.md) |
+| Recording guide (historical) | [docs/demo-walkthrough.md](docs/demo-walkthrough.md) |
 
-## Cleanup
+## Teardown (completed 28 October 2026)
 
-The live demo is temporary. Its resources are destroyed after evidence capture to stop the
-costs, so the AWS console pages and ALB URLs in this repository will stop working. The
-repository, the diagrams and the evidence remain.
+After the results were recorded, all AWS resources were removed on 28 October 2026 to
+stop the costs. Teardown was a **reviewed sequence, not a single `terraform destroy`**,
+because:
 
-Teardown is a **reviewed sequence, not a single `terraform destroy`**:
-
-- the ALB and the DynamoDB table have deletion protection;
-- the bundle and state buckets are versioned;
-- ECR's `force_delete` is off;
+- the ALB and the DynamoDB table had deletion protection;
+- the bundle and state buckets were versioned;
+- ECR's `force_delete` was off;
 - the state bucket has `prevent_destroy`.
 
-Follow [docs/first-deployment-checklist.md, Phase 11](docs/first-deployment-checklist.md#phase-11-teardown-and-cost-check)
-and [docs/aws-platform.md §8](docs/aws-platform.md#8-teardown-do-not-run-until-migration-acceptance).
+What was run:
+
+1. **Deletion protection disabled** with a reviewed, targeted saved plan (0 added,
+   2 changed, 0 destroyed).
+2. **Bundle bucket emptied**, deleting its one object version by its exact version ID.
+3. **Platform destroyed** by a reviewed saved destroy plan (**0 added, 0 changed,
+   70 destroyed**).
+4. **Bootstrap resources removed** after the 11 ECR images were deleted: a reviewed,
+   targeted plan removed the ECR repository and the three GitHub Actions roles and their
+   policies (**0 added, 0 changed, 16 destroyed**).
+5. **Container Insights log group deleted.** AWS had created it outside Terraform.
+
+Kept on purpose:
+
+- the private, versioned Terraform state bucket;
+- the GitHub OIDC provider, which other projects share.
+
+No project compute, load balancer, NAT, public IPv4, DynamoDB, ECR or CloudWatch
+resources remain. The [Deploy workflow](.github/workflows/deploy.yml) is disabled, and its
+repository variables and secret have been removed.
+
+The full record, including where it departed from the original runbook, is in
+[evidence/aws-teardown-2026-10-28](evidence/aws-teardown-2026-10-28/README.md).
 
 ## License
 

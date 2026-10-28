@@ -1,8 +1,12 @@
 # AWS platform: Terraform structure, deployment order, cost and teardown
 
-Status: **deployed in AWS (eu-west-2) and verified on 28 October 2026.** Final state:
-`traffic_stage = 3` (EC2 0 % / ECS 100 %), with the legacy EC2 kept as the rollback target.
-Results: [evidence/live-migration-2026-10-28](../evidence/live-migration-2026-10-28/README.md).
+Status: **deployed in AWS (eu-west-2) and verified on 28 October 2026, then decommissioned
+the same day.** The last production configuration was `traffic_stage = 3` (EC2 0 % /
+ECS 100 %), with the legacy EC2 kept as the rollback target. Results:
+[evidence/live-migration-2026-10-28](../evidence/live-migration-2026-10-28/README.md).
+Teardown: [§8](#8-teardown-do-not-run-until-migration-acceptance) and
+[evidence/aws-teardown-2026-10-28](../evidence/aws-teardown-2026-10-28/README.md). This
+document describes the architecture that was deployed; none of it is running now.
 The design sections below were written before deployment; where the live result differs, it
 is noted inline. The ALB is **HTTP only**, with no Route 53 record or ACM certificate.
 Data handling and cutover rules are in [migration-state-runbook.md](migration-state-runbook.md).
@@ -195,6 +199,21 @@ What this means:
 - Autoscaling to 4 tasks adds about $21/month while scaled out.
 
 ## 8. Teardown (do not run until migration acceptance)
+
+**Executed on 28 October 2026.** The steps below are the original plan. The actual
+sequence was:
+
+1. a targeted protection-disable plan (2 changed);
+2. the bundle bucket emptied by version ID;
+3. the platform destroy (70 destroyed);
+4. the ECR images deleted, then a targeted bootstrap plan (16 destroyed);
+5. the Container Insights log group deleted separately.
+
+The state bucket and the shared GitHub OIDC provider were kept. There was no Stage 0
+deploy and no blanket bootstrap destroy. Details and the deviations from this plan:
+[first-deployment-checklist.md, Executed teardown](first-deployment-checklist.md#executed-teardown-28-october-2026).
+
+Original plan:
 
 1. `traffic_stage = 0`. Export the table if the data matters:
    `aws dynamodb scan`, or an on-demand backup.

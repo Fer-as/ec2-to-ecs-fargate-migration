@@ -3,7 +3,10 @@
 State shown: **deployed and verified in AWS on 28 October 2026**. The final state is EC2 0 % /
 ECS 100 %, with the legacy EC2 instance kept healthy as the rollback target. Results:
 [evidence/live-migration-2026-10-28](../../evidence/live-migration-2026-10-28/README.md).
-The diagrams show what is deployed: HTTP only, with no Route 53 record or ACM certificate.
+The diagrams show what was deployed: HTTP only, with no Route 53 record or ACM certificate.
+The platform was decommissioned after verification on 28 October 2026
+([teardown record](../../evidence/aws-teardown-2026-10-28/README.md)). The diagrams record
+the architecture that was deployed; it is not running now.
 The PNGs were re-exported from the updated sources on 28 Oct 2026.
 
 | Diagram | Editable source | Image |

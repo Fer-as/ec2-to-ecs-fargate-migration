@@ -6,6 +6,11 @@ EC2 and a restoration to 100 % ECS. Each run was approved through the `productio
 environment. Results and run links:
 [evidence/live-migration-2026-10-28](../evidence/live-migration-2026-10-28/README.md). (The
 earlier status line, "`deploy.yml` has never run", dated from before 27 Oct 2026.)
+**Retired on 28 Oct 2026:** after the AWS teardown, the Deploy workflow was disabled in
+GitHub Actions. Its OIDC roles and its repository variables and secret were deleted. The
+workflow source and all of its runs remain, as the record of the pipeline that was
+actually run; `ci.yml` and `terraform-ci.yml` stay enabled.
+See [evidence/aws-teardown-2026-10-28](../evidence/aws-teardown-2026-10-28/README.md).
 Platform design: [aws-platform.md](aws-platform.md). Data/cutover rules:
 [migration-state-runbook.md](migration-state-runbook.md). Accepted risks:
 [security-exceptions.md](security-exceptions.md).

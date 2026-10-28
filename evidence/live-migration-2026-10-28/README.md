@@ -1,5 +1,8 @@
 # Live migration evidence: 28 October 2026
 
+> The platform described here was decommissioned after these results were captured. See
+> the [teardown record](../aws-teardown-2026-10-28/README.md).
+
 The EC2 → ECS Fargate cutover in AWS (`eu-west-2`, account `…7756`), followed by a deliberate
 rollback and a restoration. Every step went through the protected `deploy.yml` workflow:
 

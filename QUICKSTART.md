@@ -2,11 +2,11 @@
 
 How to review this project and run it locally, without touching any AWS environment.
 
-> **Do not run `terraform init`, `apply` or `destroy` in `terraform/`.** The platform
-> root uses a remote S3 backend that holds the live demo's state. Changes go only through
-> the approval-gated [deploy.yml](.github/workflows/deploy.yml) workflow, using saved,
-> reviewed plans ([docs/ci-cd.md](docs/ci-cd.md)). Teardown is a reviewed sequence, not a
-> single `destroy`: see [docs/first-deployment-checklist.md, Phase 11](docs/first-deployment-checklist.md#phase-11-teardown-and-cost-check).
+> **The AWS demo was decommissioned on 28 October 2026**
+> ([teardown record](evidence/aws-teardown-2026-10-28/README.md)). Nothing is running,
+> and the approval-gated [deploy.yml](.github/workflows/deploy.yml) workflow is disabled.
+> Don't run `terraform init`, `apply` or `destroy` in `terraform/` against the remote
+> backend. Use the offline checks below.
 
 ## 1. Read the results (2 minutes)
 
@@ -44,11 +44,12 @@ Shared DynamoDB storage can be tried against DynamoDB Local. See
 [docs/migration-state-runbook.md](docs/migration-state-runbook.md) and
 [evidence/task-05-shared-state](evidence/task-05-shared-state/README.md).
 
-## 4. Live demo (temporary)
+## 4. Live demo (retired)
 
-While the demo platform exists, the read-only `GET` endpoints are listed in
-[docs/demo-walkthrough.md](docs/demo-walkthrough.md). They will stop working after the AWS
-resources are torn down. Don't send `POST` requests to the live demo.
+The live demo ran on 28 October 2026 and has been torn down. The endpoints listed in
+[docs/demo-walkthrough.md](docs/demo-walkthrough.md) are kept only as a historical record
+and no longer respond. The measured results are in the
+[evidence](evidence/live-migration-2026-10-28/README.md).
 
 ## Original starter instructions
 

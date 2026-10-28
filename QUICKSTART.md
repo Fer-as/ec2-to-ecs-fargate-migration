@@ -1,77 +1,57 @@
-# Legacy App Start Guide
+# Quickstart for reviewers
 
-Get the legacy application running in 5 minutes.
+How to review this project and run it locally, without touching any AWS environment.
 
-## Prerequisites
+> **Do not run `terraform init`, `apply` or `destroy` in `terraform/`.** The platform
+> root uses a remote S3 backend that holds the live demo's state. Changes go only through
+> the approval-gated [deploy.yml](.github/workflows/deploy.yml) workflow, using saved,
+> reviewed plans ([docs/ci-cd.md](docs/ci-cd.md)). Teardown is a reviewed sequence, not a
+> single `destroy`: see [docs/first-deployment-checklist.md, Phase 11](docs/first-deployment-checklist.md#phase-11-teardown-and-cost-check).
 
-```bash
-# Check AWS CLI
-aws --version
+## 1. Read the results (2 minutes)
 
-# Check Terraform
-terraform version
+1. [README.md](README.md): overview, architecture and migration results.
+2. [evidence/live-migration-2026-10-28](evidence/live-migration-2026-10-28/README.md): runs,
+   commits, sampled health checks and the shared-DynamoDB test.
+3. [docs/architecture/](docs/architecture/README.md): platform and migration diagrams.
 
-# Configure AWS (if not already done)
-aws configure
-```
-
-## Deploy
-
-```bash
-# 1. Navigate to terraform directory
-cd terraform
-
-# 2. Copy example variables
-cp terraform.tfvars.example terraform.tfvars
-
-# 3. Edit variables (minimum required)
-# Edit terraform.tfvars and set:
-#   - aws_region
-#   - allowed_cidr_blocks (your IP)
-
-# 4. Initialize and deploy
-terraform init
-terraform apply
-
-# Wait ~3-5 minutes for deployment
-```
-
-## Test
+## 2. Run the tests locally
 
 ```bash
-# Get application URL
-APP_URL=$(terraform output -raw application_url)
-
-# Health check
-curl $APP_URL/health
-
-# Test API
-curl $APP_URL/api/v1/products
+python -m venv venv
+venv/bin/pip install -r requirements-dev.txt     # Windows: venv\Scripts\pip
+venv/bin/python -m pytest tests ci/tests -q       # some tests run only on Linux
 ```
 
-## Clean Up
+Terraform checks, offline (no credentials or backend needed):
 
 ```bash
-terraform destroy
+terraform -chdir=terraform init -backend=false && terraform -chdir=terraform validate
+terraform -chdir=terraform test               # mocked providers
+terraform -chdir=terraform/bootstrap init -backend=false && terraform -chdir=terraform/bootstrap test
 ```
 
-## Next Steps
+## 3. Run the container locally
 
-1. Read `README.md` for full documentation
-2. Review `ARCHITECTURE.md` for current setup
-3. Read `DEPLOYMENT.md` for detailed deployment guide
-4. Plan your ECS migration!
+```bash
+docker build -t legacy-api:local .
+docker run --rm -p 5000:5000 legacy-api:local      # in-memory storage, one worker
+curl http://localhost:5000/health
+curl http://localhost:5000/api/v1/products
+```
 
-## Troubleshooting
+Shared DynamoDB storage can be tried against DynamoDB Local. See
+[docs/migration-state-runbook.md](docs/migration-state-runbook.md) and
+[evidence/task-05-shared-state](evidence/task-05-shared-state/README.md).
 
-**Instance not responding?**
-- Wait 3-5 minutes after `terraform apply`
-- Check security groups allow your IP
-- SSH into instance (requires `key_pair_name` and `ssh_allowed_cidr_blocks`): `ssh -i ~/.ssh/key.pem ubuntu@<ip>`
+## 4. Live demo (temporary)
 
-**Application not working?**
-- Check logs: `sudo journalctl -u flask-app -n 50`
-- Validate setup: `bash /opt/flask-app/scripts/validate-setup.sh`
-- Test locally: `curl http://localhost/health`
+While the demo platform exists, the read-only `GET` endpoints are listed in
+[docs/demo-walkthrough.md](docs/demo-walkthrough.md). They will stop working after the AWS
+resources are torn down. Don't send `POST` requests to the live demo.
 
-See `DEPLOYMENT.md` for detailed troubleshooting.
+## Original starter instructions
+
+The original single-EC2 quickstart from the CoderCo starter (`terraform init/apply` with a
+local `terraform.tfvars`) no longer applies to this repository. It is preserved for
+reference in [docs/legacy-starter-readme.md](docs/legacy-starter-readme.md).

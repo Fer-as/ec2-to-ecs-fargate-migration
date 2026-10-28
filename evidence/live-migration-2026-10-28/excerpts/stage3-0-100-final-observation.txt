@@ -1,0 +1,63 @@
+# Sanitised excerpt of stage3-0-100/monitor-3-165931Z.txt from the private evidence archive (28 Oct 2026).
+# Read-only monitor output: describes, CloudWatch, a DynamoDB scan and GET requests.
+# Account ID and IP addresses masked.
+
+=== observation at 2026-10-28T16:59:31+00:00 (hold started 2026-10-28T16:43:54Z) ===
+ALB
+  OK   configured default weights {'ec2': 0, 'ecs': 100}
+  OK   verification rules present: ['ec2', 'ecs']
+  OK   ec2 targets ['healthy']
+  OK   ecs targets ['healthy', 'healthy']
+ECS
+  OK   ACTIVE running=2/2 pending=0 deployments=1 rollout=COMPLETED td=legacy-api-production-app:9
+    task 09dd4f6b legacy-api-production-app:9 RUNNING health=HEALTHY started=2026-10-28T16:41:43
+    task 63fa3bf8 legacy-api-production-app:9 RUNNING health=HEALTHY started=2026-10-28T16:41:54
+  OK   2 RUNNING + HEALTHY tasks
+    event 16:43:44 (service legacy-api-production-app) has reached a steady state.
+    event 16:43:44 (service legacy-api-production-app) (deployment ecs-svc/3469300249893141173) deployment completed.
+    event 16:42:42 (service legacy-api-production-app, taskSet ecs-svc/8271399791305713528) has begun draining connections on 2 t
+    event 16:42:42 (service legacy-api-production-app) deregistered 2 targets in (target-group arn:aws:elasticloadbalancing:eu-we
+    event 16:42:32 (service legacy-api-production-app) has stopped 2 running tasks: (task 0b148d32bec2474994e8dd8a2e0d1f2d) (task
+    event 16:41:40 (service legacy-api-production-app) registered 1 targets in (target-group arn:aws:elasticloadbalancing:eu-west
+EC2 / Elastic IP
+  OK   project instances [('i-08333f4e4df9de3fc', 'running')]
+  OK   EIP attached to i-08333f4e4df9de3fc (eipassoc-0e4badb418b815d15)
+CloudWatch alarms
+  OK   legacy-api-production-alb-5xx = OK
+  OK   legacy-api-production-ec2-unhealthy-targets = OK
+  OK   legacy-api-production-ecs-cpu-high = OK
+  OK   legacy-api-production-ecs-target-5xx = OK
+  OK   legacy-api-production-ecs-tasks-below-desired = OK
+  OK   legacy-api-production-ecs-unhealthy-targets = OK
+  info also in ALARM: TargetTracking-service/legacy-api-production/legacy-api-production-app-AlarmLow-16adb7f9-ccce-4f16-9fd1-aecc19614d07  (scale-in alarm at the 2-task minimum; not an application failure)
+Metrics since 2026-10-28T16:43:54Z (1-minute datapoints)
+  OK   ALB-generated 5xx: 0
+  OK   ec2 target 5xx: 0
+  OK   ec2 max UnHealthyHostCount: 0
+  OK   ecs target 5xx: 0
+  OK   ecs max UnHealthyHostCount: 0
+  info latest published ALB RequestCount datapoint: 2026-10-28T16:58:00+00:00 (CloudWatch lags 1-3 min; the most recent minutes may be missing)
+  info ALB RequestCount per target group: {'ec2': 10.0, 'ecs': 215.0} -> observed {'ec2': '4.4%', 'ecs': '95.6%'} of 225 requests (includes this monitor's own samples)
+DynamoDB
+  OK   write operations since hold start: {'PutItem': 0, 'UpdateItem': 0, 'TransactWriteItems': 0, 'BatchWriteItem': 0, 'DeleteItem': 0}
+  OK   orders [1, 2], sequence 2, product 1 stock 98
+Backends (GET only, header routes)
+  OK   ec2 /health           200 served by ec2
+  OK   ec2 /ready            200 served by ec2
+  OK   ec2 /api/v1/products  200 served by ec2
+  OK   ec2 /api/v1/orders    200 served by ec2
+  OK   ec2 /api/v1/stats     200 served by ec2
+  OK   ecs /health           200 served by ecs
+  OK   ecs /ready            200 served by ecs
+  OK   ecs /api/v1/products  200 served by ecs
+  OK   ecs /api/v1/orders    200 served by ecs
+  OK   ecs /api/v1/stats     200 served by ecs
+  OK   EC2 and ECS return identical bodies (timestamps removed)
+  OK   orders [1, 2], product 1 stock 98, revenue 59.98, total_orders 2
+Default route (no header): 150 x GET /health
+  OK   150/150 returned 200
+  info served by {'ecs': 150} -> ECS 100.0% (approx. 95% interval 100.0-100.0%)
+  OK   all 150 unheadered requests served by ECS (EC2: 0, other: 0)
+
+RESULT at 2026-10-28T16:59:31+00:00: PASS
+check3 exit=0

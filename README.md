@@ -1,299 +1,308 @@
-# EC2 Legacy Application
+# EC2 to ECS Fargate Migration — Terraform, GitHub Actions and DynamoDB
 
-This is a **legacy Flask application** running on a single EC2 instance behind Nginx. It represents a typical "before" state of an application that needs to be migrated to a modern containerized platform.
+A legacy Flask API on a single EC2 instance moved to **Amazon ECS Fargate** with a
+progressive, approval-gated ALB traffic cutover and shared DynamoDB storage. A deliberate
+rollback and a restoration were also tested. The whole migration was run live in AWS
+(`eu-west-2`) on **28 October 2026**.
 
-## Credits and scope
+| Final state | Cutover | Rollback | Verified data |
+|---|---|---|---|
+| EC2 0 % / ECS 100 %, 2 Fargate tasks in 2 AZs | 90/10 → 50/50 → 0/100, all PASS | 100 % ECS → 100 % EC2 → 100 % ECS, PASS | Orders written through each backend, read through the other |
 
-The original application, Nginx/systemd configuration, setup scripts, legacy Terraform
-and the "before" documentation in this README and `ARCHITECTURE.md` come from the
-**CoderCo** EC2-to-ECS migration assignment (CoderCo Community learning project).
+**Evidence:** [live migration results](evidence/live-migration-2026-10-28/README.md) ·
+**Architecture:** [diagrams](docs/architecture/README.md) ·
+**Recording guide:** [demo walkthrough](docs/demo-walkthrough.md)
 
-Migration work added on top of the starter:
-- tests (`tests/`)
-- container image (`Dockerfile`)
-- shared DynamoDB storage (`app/storage.py`)
-- ECS Fargate platform and bootstrap Terraform (`terraform/`)
-- CI/CD and security gates (`.github/`, `ci/`)
-- runbooks (`docs/`) and verification evidence (`evidence/`)
+## Project overview
 
-Start with [docs/aws-platform.md](docs/aws-platform.md) and [docs/ci-cd.md](docs/ci-cd.md).
+**Starting point.** The original CoderCo application was a Flask API served by
+Gunicorn behind Nginx on one EC2 instance. It kept its data in memory, and all traffic
+went to that one instance's Elastic IP. That meant:
 
-## Assessor navigation
+- no high availability or horizontal scaling;
+- no CI/CD;
+- logs only on the instance;
+- data lost on every restart.
 
-Status (26 Oct 2026): implemented as code and verified locally and in GitHub Actions;
-**not yet deployed in AWS**.
+**Problem.** Move the service to containers without downtime, without losing orders,
+and with a rollback path at every step.
 
-| Topic | Where |
-|---|---|
-| Acceptance status (what is verified, where) | [docs/acceptance-checklist.md](docs/acceptance-checklist.md) |
-| Architecture diagrams (editable draw.io + PNG) | [docs/architecture/](docs/architecture/) |
-| CI/CD, OIDC, approval | [docs/ci-cd.md](docs/ci-cd.md), [docs/approval-gate-test.md](docs/approval-gate-test.md) |
-| IAM permission matrix | [docs/iam-permission-matrix.md](docs/iam-permission-matrix.md) |
-| Migration and rollback runbook | [docs/migration-state-runbook.md](docs/migration-state-runbook.md) |
-| First AWS deployment (operator steps) | [docs/first-deployment-checklist.md](docs/first-deployment-checklist.md) |
-| Readiness review and known issues | [docs/deployment-readiness-review.md](docs/deployment-readiness-review.md) |
-| Evidence (redacted command output) | [evidence/](evidence/) |
+**Solution.**
 
-![Platform architecture](docs/architecture/ec2-to-ecs-overview.png)
+1. Containerise the app and give both backends one shared DynamoDB store.
+2. Put an ALB with weighted target groups in front of both the legacy EC2 instance and
+   an ECS Fargate service.
+3. Shift traffic in reviewed stages. Each stage is one line of Terraform, deployed
+   through a pipeline that needs a human to approve the exact saved plan.
+
+**Measured result.**
+
+- Every stage passed a monitored hold of at least 15 minutes.
+- 1,990 sampled requests returned HTTP 200 across all observations.
+- There were no 5xx errors and no unhealthy targets at the observations.
+- Both backends returned identical data throughout.
+
+See [Migration results](#migration-results).
+
+### Credits: starter code vs migration work
+
+The starting point, kept as received, is the **CoderCo** EC2-to-ECS migration assignment
+(CoderCo Community learning project):
+
+- the Flask application and its API;
+- the Nginx and systemd configuration and the setup scripts;
+- the single-EC2 Terraform and its documentation.
+
+The original README is preserved as [docs/legacy-starter-readme.md](docs/legacy-starter-readme.md),
+and the original architecture is in [ARCHITECTURE.md](ARCHITECTURE.md).
+
+All of the following was added for the migration:
+
+- **Application and tests:** the shared storage layer ([app/storage.py](app/storage.py)),
+  readiness checks and the test suites.
+- **Container:** the production Dockerfile.
+- **Terraform:** the bootstrap and platform roots.
+- **CI/CD:** the workflows and their CI tooling.
+- **Operations:** the runbooks and the evidence.
+
+## Key outcomes
+
+- **Containerised Flask app on ECS Fargate:**
+  - non-root;
+  - read-only root filesystem;
+  - the base image pinned by digest.
+- **Two tasks across two Availability Zones** in private subnets with no public IPs.
+  CPU target-tracking autoscaling runs from 2 to 4 tasks.
+- **Terraform with separate roots:**
+  - a [bootstrap](terraform/bootstrap/) root for the state bucket, ECR and the GitHub OIDC
+    roles;
+  - a [platform](terraform/) root for the network, ALB, ECS, EC2, DynamoDB and monitoring.
+    It uses remote S3 state with lock-file locking.
+- **GitHub Actions CI/CD:** blocking CI and Terraform CI gates, and a manual,
+  approval-gated [deploy.yml](.github/workflows/deploy.yml).
+- **AWS OIDC, no long-lived keys:** separate plan, image-push and apply roles. Each role
+  trusts only the exact GitHub job that needs it.
+- **Reviewed saved plans:**
+  - the plan is stored privately;
+  - `plan_guard.py` refuses `application` deploys that move traffic or storage;
+  - a reviewer must approve the `production` environment;
+  - Terraform then applies exactly that plan, with its SHA-256 checked.
+- **Immutable images:** ECR tags are commit SHAs, tags can't be overwritten, and ECS
+  pulls by digest.
+- **Shared DynamoDB persistence:** both EC2 and ECS run with `STORAGE_BACKEND=dynamodb`.
+  Each order and its stock decrement are written in one transaction. The table has
+  point-in-time recovery and deletion protection.
+- **Progressive ALB weighted cutover** in stages 0 → 1 → 2 → 3.
+- **Verified rollback** to EC2 and restoration to ECS, both through the same reviewed
+  pipeline.
+- **CloudWatch:**
+  - ECS logs;
+  - six alarms: ALB 5xx, ECS target 5xx, unhealthy targets for each group, ECS CPU, and
+    tasks below desired;
+  - a migration dashboard;
+  - VPC flow logs.
 
 ## Architecture
 
+![Deployed platform architecture](docs/architecture/ec2-to-ecs-overview.png)
+
+What is deployed, as verified on 28 October 2026:
+
+- **Public ALB, HTTP :80.** One listener forwards to two target groups with Terraform-owned
+  weights (`traffic_stage` 0–3, now **3**). Two extra listener rules route
+  `X-Migration-Target: ec2|ecs`. They work only from a single operator `/32`, for
+  side-by-side verification.
+- **Legacy EC2, kept as the rollback target.** It runs Nginx → Gunicorn, still registered
+  and healthy at weight 0, and also reads and writes the shared DynamoDB table.
+- **ECS Fargate service, 2 tasks** in two private subnets.
+  - Only the ALB security group can reach port 5000.
+  - Outbound traffic goes through a single NAT gateway (for ECR and logs) and through S3
+    and DynamoDB gateway endpoints.
+- **DynamoDB `legacy-api-production`:** products, stock, an order counter and orders,
+  shared by both backends.
+- **ECR, CloudWatch, Terraform and GitHub Actions:**
+  - images are built and scanned in CI, pushed by digest, and deployed through a saved
+    Terraform plan;
+  - logs, alarms and the dashboard are in CloudWatch.
+
+There is no HTTPS, ACM certificate or Route 53 record: the demo uses the ALB's HTTP
+hostname. Details: [docs/aws-platform.md](docs/aws-platform.md) and the
+[migration flow diagram](docs/architecture/migration-traffic-flow.png).
+
+## Migration results
+
+Live in AWS, 28 October 2026.
+
+| Stage | ALB weights (EC2 / ECS) | Deploy run | Sampled `GET /health` | Answered by | Result |
+|---|---|---|---|---|---|
+| 0 baseline | 100 / 0 | [40703528943](https://github.com/Fer-as/ec2-to-ecs-fargate-migration/actions/runs/40703528943) | – | EC2 | ✅ |
+| 1 canary | 90 / 10 | [40713560064](https://github.com/Fer-as/ec2-to-ecs-fargate-migration/actions/runs/40713560064) | 600/600 HTTP 200 | ECS 56/600 (9.3 %) | ✅ PASS |
+| 2 half | 50 / 50 | [40719498237](https://github.com/Fer-as/ec2-to-ecs-fargate-migration/actions/runs/40719498237) | 390/390 HTTP 200 | ECS 188/390 (48.2 %) | ✅ PASS |
+| 3 ECS only | 0 / 100 | [40727166757](https://github.com/Fer-as/ec2-to-ecs-fargate-migration/actions/runs/40727166757) | 350/350 HTTP 200 | all ECS | ✅ PASS |
+| Rollback | 100 / 0 | [40736488690](https://github.com/Fer-as/ec2-to-ecs-fargate-migration/actions/runs/40736488690) | 300/300 HTTP 200 | all EC2 | ✅ PASS |
+| Final restoration | 0 / 100 | [40739889980](https://github.com/Fer-as/ec2-to-ecs-fargate-migration/actions/runs/40739889980) | 350/350 HTTP 200 | all ECS | ✅ PASS |
+
+The figures are **sampled requests during the monitored holds**, not proof of continuous
+uptime. The ECS share is an estimate of the configured weight.
+
+At every observation:
+
+- the targets were healthy;
+- all six alarms were `OK`;
+- ALB and target 5xx were 0;
+- unhealthy hosts were 0;
+- both backends returned identical products, orders and stats.
+
+CloudWatch publishes 1–3 minutes late, so the last minutes before each check aren't
+covered.
+
+The full timeline, plan summaries and sanitised monitor output are in the
+[evidence](evidence/live-migration-2026-10-28/README.md).
+
+## Shared DynamoDB
+
+The table was seeded once. Then exactly two controlled orders were placed:
+
+1. **Order 1** went through **ECS** and was visible through **EC2**.
+2. **Order 2** went through **EC2** and was visible through **ECS**.
+
+Afterwards, both backends showed orders [1, 2], product 1 stock **98** (from 100) and
+total revenue **59.98** (application currency units). A consistent-read DynamoDB scan
+confirmed exactly two orders, counter 2 and stock 98. These values stayed the same through
+every later stage, the rollback and the restoration, because a write freeze stayed in
+place. Design and limits: [docs/migration-state-runbook.md](docs/migration-state-runbook.md).
+
+## CI/CD and security
+
 ```
-Internet → EC2 Instance (Public Subnet)
-              ├── Nginx (Port 80)
-              └── Flask App (Gunicorn, Port 5000)
-```
-
-### Components
-
-- **Flask Application**: Python/Flask API with REST endpoints
-- **Gunicorn**: WSGI HTTP Server running the Flask app
-- **Nginx**: Reverse proxy serving HTTP on port 80
-- **Systemd**: Service manager for the Flask application
-- **Terraform**: Infrastructure as Code for provisioning
-
-## Application Features
-
-The Flask API provides the following endpoints:
-
-- `GET /health` - Health check endpoint
-- `GET /api/v1/products` - List all products
-- `GET /api/v1/products/{id}` - Get specific product
-- `POST /api/v1/orders` - Create a new order
-- `GET /api/v1/orders` - List all orders
-- `GET /api/v1/stats` - Application statistics
-- `GET /ready` - Readiness: `200` when storage is reachable and seeded, otherwise `503`
-
-### Storage
-
-`STORAGE_BACKEND=memory` (default) keeps the original in-process storage: one Gunicorn
-worker only, and data is lost on restart. `STORAGE_BACKEND=dynamodb` stores products,
-stock and orders in a shared DynamoDB table so EC2 and ECS can run side by side.
-See [docs/migration-state-runbook.md](docs/migration-state-runbook.md).
-
-## Prerequisites
-
-- **AWS Account** with appropriate permissions
-- **Terraform** >= 1.5.0
-- **AWS CLI** configured (for manual testing)
-- **SSH Key Pair** created in AWS (optional, for SSH access)
-
-## Deployment
-
-> **Note:** these are the original single-EC2 steps. The Terraform root now uses a
-> remote S3 backend created by `terraform/bootstrap`, so a plain `terraform init` asks
-> for backend settings. Follow [docs/ci-cd.md](docs/ci-cd.md) section 7 for the current,
-> approval-gated deployment order.
-
-### 1. Configure Terraform Variables
-
-```bash
-cd terraform
-cp terraform.tfvars.example terraform.tfvars
-# Edit terraform.tfvars with your values
-```
-
-### 2. Initialize Terraform
-
-```bash
-terraform init
-```
-
-### 3. Review Plan
-
-```bash
-terraform plan
-```
-
-### 4. Deploy Infrastructure
-
-```bash
-terraform apply
-```
-
-This will create:
-- VPC with public and private subnets
-- Internet Gateway and Route Tables
-- Security Groups
-- EC2 instance with Elastic IP
-- S3 bucket for application files
-- IAM roles and policies
-- (Optional) Route53 DNS record
-
-### 5. Wait for Application Setup
-
-The EC2 instance will automatically:
-1. Download application files from S3
-2. Install system dependencies
-3. Set up Python virtual environment
-4. Configure Nginx
-5. Start the Flask application via systemd
-
-Check the instance status:
-
-```bash
-# Get instance IP
-terraform output ec2_instance_public_ip
-
-# SSH into instance (only if key_pair_name and ssh_allowed_cidr_blocks are set)
-ssh -i ~/.ssh/your-key.pem ubuntu@<instance-ip>
-
-# Check application logs
-sudo journalctl -u flask-app -f
-sudo tail -f /var/log/nginx/flask-access.log
+CI + security gates → publish image (ECR digest) → saved Terraform plan (private S3)
+  → manual approval of "production" → apply exactly that plan → verify_rollout.py
 ```
 
-### 6. Test the Application
+- **Gates:**
+  - unit and contract tests, plus DynamoDB Local integration tests;
+  - `pip-audit`;
+  - Trivy on the exact image;
+  - gitleaks;
+  - Checkov;
+  - Terraform `fmt`, `validate` and mocked `terraform test`;
+  - a rendered-IAM-policy gate;
+  - workflow privilege tests;
+  - pre-commit hooks.
+- **GitHub OIDC:**
+  - PR and push workflows get no AWS access;
+  - in `deploy.yml`, each job assumes only its own role (plan, image-push or apply);
+  - each role trusts one exact OIDC subject and has no static keys;
+  - the apply role is region-locked, tag- and name-scoped, and explicitly denied from
+    changing its own identity.
+- **Approval:** the `production` environment requires a reviewer, accepts only `main`,
+  and allows no admin bypass. A rejected approval means no apply credentials are issued.
 
-```bash
-# Get application URL
-APP_URL=$(terraform output -raw application_url)
-echo $APP_URL
+Details: [docs/ci-cd.md](docs/ci-cd.md),
+[docs/iam-permission-matrix.md](docs/iam-permission-matrix.md) and
+[docs/approval-gate-test.md](docs/approval-gate-test.md).
 
-# Health check
-curl $APP_URL/health
+## Testing and monitoring
 
-# List products
-curl $APP_URL/api/v1/products
+- **Automated tests,** counted at commit `560e1e5`:
+  - 410 CI tooling and policy tests (`ci/tests`);
+  - 86 application tests (`tests/`), including the Gunicorn and DynamoDB Local tests that
+    run on Linux in CI;
+  - mocked Terraform tests: 19 for the platform root, 11 for bootstrap.
+- **Container:** built and smoke-tested in CI, Trivy-gated on fixable HIGH and CRITICAL
+  findings, and scanned again on push to ECR.
+- **Health:**
+  - ALB checks on `/ready`, which tests storage access;
+  - container health checks;
+  - `verify_rollout.py` after every apply (ECS stable, `rolloutState COMPLETED`, every
+    target healthy, `/health` and `/ready` 200).
+- **Cutover holds:** each stage held for at least 15 minutes with at least three read-only
+  observations (two for the rollback). Each observation checked:
+  - the ALB weights;
+  - target and task health;
+  - alarms;
+  - 5xx and unhealthy-host metrics;
+  - DynamoDB write metrics;
+  - a consistent DynamoDB scan;
+  - a comparison of both backends;
+  - 100–200 unheadered requests.
 
-# Create an order
-curl -X POST $APP_URL/api/v1/orders \
-  -H "Content-Type: application/json" \
-  -d '{"product_id": 1, "quantity": 2}'
-```
+## Rollback
 
-## Application Access
+Rollback is the same reviewed path as any stage, not a console edit:
 
-The application will be accessible via:
-- **Public IP**: Use `terraform output ec2_instance_public_ip`
-- **Domain Name**: If Route53 is configured, use `terraform output route53_record`
+1. Commit `traffic_stage = 0`.
+2. Run a `platform` deploy.
+3. Review the saved plan: the listener weights change, and ECS rolls the rebuilt image.
+4. Approve.
 
-Default endpoint: `http://<ip-or-domain>/health`
+It was tested from 100 % ECS: [40736488690](https://github.com/Fer-as/ec2-to-ecs-fargate-migration/actions/runs/40736488690),
+an apply of about 3 minutes. All 300 sampled requests were then served by EC2, with no
+data divergence, because both backends share the table. 100 % ECS was then restored with
+[40739889980](https://github.com/Fer-as/ec2-to-ecs-fargate-migration/actions/runs/40739889980).
 
-## Logs
+EC2 must never be rolled back to in-memory storage once shared writes exist. Runbook:
+[docs/first-deployment-checklist.md](docs/first-deployment-checklist.md#phase-9-rollback).
 
-Application logs are located on the EC2 instance:
+## Known limitations
 
-- **Application logs**: `/var/log/flask-app/`
-  - `access.log` - Gunicorn access logs
-  - `error.log` - Gunicorn error logs
-- **Systemd logs**: `sudo journalctl -u flask-app -f`
-- **Nginx logs**: `/var/log/nginx/`
-  - `flask-access.log` - Nginx access logs
-  - `flask-error.log` - Nginx error logs
+This is a short-lived portfolio and learning deployment, not a hardened or compliance-reviewed
+production system.
 
-## Service Management
+- **HTTP only:** no ACM certificate, HTTPS listener or custom domain.
+- **Base-image vulnerabilities:** the Debian base image has unfixed HIGH CVEs. They are
+  documented as time-limited exceptions and re-checked on every build: the Trivy gate
+  blocks only *fixable* findings. See
+  [docs/security-exceptions.md](docs/security-exceptions.md). The project does not claim
+  zero vulnerabilities.
+- **Fixed ALB weights:**
+  - the ECS circuit breaker rolls back a bad ECS deployment, but it doesn't move traffic
+    back to EC2;
+  - recovery means a reviewed `traffic_stage = 0` deploy;
+  - the alarms make the problem visible.
+- **No zero-downtime guarantee:** the measured holds showed no errors in the samples, but
+  that isn't a guarantee.
+- **Cost and resilience trade-offs:**
+  - one NAT gateway (a single-AZ egress dependency, and the largest fixed cost);
+  - a single-instance EC2 rollback target;
+  - the bootstrap state is kept locally with backups.
+- **Image rebuilt on every deploy:** builds aren't bit-reproducible, so every
+  `traffic_stage` deploy also rolls ECS to a freshly built image.
+- **No idempotency key on `POST /api/v1/orders`:** a client retry after a timeout can
+  create a duplicate order.
 
-```bash
-# Check service status
-sudo systemctl status flask-app
-sudo systemctl status nginx
+## Evidence and links
 
-# Restart application
-sudo systemctl restart flask-app
-
-# View logs
-sudo journalctl -u flask-app -f
-```
-
-## Troubleshooting
-
-### Application not responding
-
-1. Check if services are running:
-   ```bash
-   sudo systemctl status flask-app
-   sudo systemctl status nginx
-   ```
-
-2. Check application logs:
-   ```bash
-   sudo journalctl -u flask-app -n 50
-   tail -f /var/log/flask-app/error.log
-   ```
-
-3. Test Flask app directly:
-   ```bash
-   curl http://localhost:5000/health
-   ```
-
-4. Check Nginx configuration:
-   ```bash
-   sudo nginx -t
-   sudo tail -f /var/log/nginx/flask-error.log
-   ```
-
-### Health check fails
-
-1. Ensure Gunicorn is bound to `127.0.0.1:5000`:
-   ```bash
-   sudo netstat -tlnp | grep 5000
-   ```
-
-2. Test health endpoint directly:
-   ```bash
-   curl http://127.0.0.1:5000/health
-   ```
-
-### Permission issues
-
-Ensure correct ownership:
-
-```bash
-sudo chown -R ubuntu:ubuntu /opt/flask-app
-sudo chown -R ubuntu:ubuntu /var/log/flask-app
-```
-
-## Current Limitations (What Students Will Migrate)
-
-This legacy setup has several limitations that make it unsuitable for production:
-
-- ❌ **No autoscaling**: Single instance, no horizontal scaling
-- ❌ **No high availability**: Single point of failure
-- ❌ **Manual deployments**: No CI/CD pipeline
-- ❌ **Inconsistent logging**: Logs scattered across instance
-- ❌ **No observability**: Limited metrics and monitoring
-- ❌ **Manual configuration**: No infrastructure as code for app config
-- ❌ **No containerization**: Difficult to replicate environments
-- ❌ **Single AZ**: Not resilient to AZ failures
-- ❌ **No blue/green deployments**: Downtime during updates
-- ❌ **Security**: App runs in public subnet with public IP
-
-## Migration Goal
-
-Students will migrate this application to:
-
-- ✅ **Amazon ECS (Fargate)**: Containerized, managed service
-- ✅ **Application Load Balancer**: High availability, health checks
-- ✅ **Private subnets**: Enhanced security
-- ✅ **Auto-scaling**: Horizontal scaling based on demand
-- ✅ **CI/CD pipeline**: GitHub Actions with OIDC
-- ✅ **CloudWatch**: Centralized logging and metrics
-- ✅ **Multi-AZ**: High availability
-- ✅ **Zero-downtime deployments**: Blue/green or rolling updates
+| Topic | Where |
+|---|---|
+| Live migration results (28 Oct 2026) | [evidence/live-migration-2026-10-28/](evidence/live-migration-2026-10-28/README.md) |
+| Architecture and migration diagrams | [docs/architecture/](docs/architecture/README.md) |
+| CI/CD, OIDC and approval | [docs/ci-cd.md](docs/ci-cd.md) |
+| AWS platform, cost and teardown | [docs/aws-platform.md](docs/aws-platform.md) |
+| Shared-state migration runbook | [docs/migration-state-runbook.md](docs/migration-state-runbook.md) |
+| Operator runbook (deploy, cutover, rollback, teardown) | [docs/first-deployment-checklist.md](docs/first-deployment-checklist.md) |
+| Acceptance checklist | [docs/acceptance-checklist.md](docs/acceptance-checklist.md) |
+| Security exceptions and IAM matrix | [docs/security-exceptions.md](docs/security-exceptions.md), [docs/iam-permission-matrix.md](docs/iam-permission-matrix.md) |
+| Earlier task evidence (container, IAM, pre-commit, incidents) | [evidence/](evidence/) |
+| Recording guide | [docs/demo-walkthrough.md](docs/demo-walkthrough.md) |
 
 ## Cleanup
 
-To destroy all resources:
+The live demo is temporary. Its resources are destroyed after evidence capture to stop the
+costs, so the AWS console pages and ALB URLs in this repository will stop working. The
+repository, the diagrams and the evidence remain.
 
-```bash
-cd terraform
-terraform destroy
-```
+Teardown is a **reviewed sequence, not a single `terraform destroy`**:
 
-⚠️ **Warning**: This will delete all resources including the EC2 instance and data.
+- the ALB and the DynamoDB table have deletion protection;
+- the bundle and state buckets are versioned;
+- ECR's `force_delete` is off;
+- the state bucket has `prevent_destroy`.
 
-## Notes for Migration
-
-When migrating to ECS, students should consider:
-
-1. **DNS Cutover Strategy**: Use Route53 weighted routing or ALIAS record swap
-2. **Health Checks**: Ensure ECS health checks pass before routing traffic
-3. **Data Migration**: Consider stateful data (currently in-memory, will be lost)
-4. **Monitoring**: Set up CloudWatch alarms before cutover
-5. **Rollback Plan**: Keep EC2 instance running during initial cutover
-6. **Testing**: Validate all endpoints on ECS before full cutover
+Follow [docs/first-deployment-checklist.md, Phase 11](docs/first-deployment-checklist.md#phase-11-teardown-and-cost-check)
+and [docs/aws-platform.md §8](docs/aws-platform.md#8-teardown-do-not-run-until-migration-acceptance).
 
 ## License
 
-This is a learning project for CoderCo Community.
+The original application is a learning project for the CoderCo Community. The migration
+work in this repository builds on it for educational and portfolio purposes.

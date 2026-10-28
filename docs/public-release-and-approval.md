@@ -25,7 +25,7 @@ section 5. Do not add a licence covering CoderCo's files.
 | Class | Finding | Action |
 |---|---|---|
 | Secrets | None. gitleaks v8.30.1 over all history: no leaks. Without the repository allowlist: 3 hits, all the reviewed public CPython `GPG_KEY` fingerprint. No AWS keys, tokens or private keys in any blob | None |
-| Identifying, low | Accidental file `ersFeras_FDesktopEC2ec2-legacy-app-main` + U+F022 (commit `9bcd827`): content is 15 lines of `git diff --check` whitespace output; the **name** contains the local Windows user name and path | Remove with a normal commit after approval; it stays in history (low sensitivity, no rewrite recommended) |
+| Identifying, low | Accidental file `ersFeras_FDesktopEC2ec2-legacy-app-main` + U+F022 (commit `9bcd827`): content is 15 lines of `git diff --check` whitespace output; the **name** contains the local Windows user name and path | **Removed on 28 Oct 2026** with a normal commit; it stays in history (low sensitivity, no rewrite recommended) |
 | Identifying, low | AWS account ID **last 4 digits** in 3 evidence summaries (task 10-12); full ID appears nowhere | Accept (partial, non-secret) or redact in a new commit; history keeps it |
 | Operational, low | `evidence/task-10-bootstrap-plan/01-summary.txt` describes the account: OIDC provider date, "7 roles from other projects" (no names), IAM role count, quotas, otherwise-empty region | Accept or trim in a new commit |
 | Normal identifiers | GitHub owner/repo numeric IDs (public via API), role and bucket name patterns, IAM policies, plan text with `<ACCOUNT_ID>` | Normal for public IaC |

@@ -1,5 +1,10 @@
 # Deployment readiness review (Task 16, 26 Oct 2026)
 
+> **Pre-deployment snapshot.** This review was written before anything ran in AWS. The
+> platform has since been deployed and the full cutover, rollback and restoration were
+> verified on 28 Oct 2026. See [evidence/live-migration-2026-10-28](../evidence/live-migration-2026-10-28/README.md)
+> and the [acceptance checklist](acceptance-checklist.md). The text below is unchanged.
+
 Source of truth: the Terraform and workflow code at commit `9dd04a4` plus the
 uncommitted Task 14/16 changes. Nothing has run in AWS. Operator steps:
 [first-deployment-checklist.md](first-deployment-checklist.md).

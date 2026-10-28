@@ -1,6 +1,10 @@
 # AWS platform: Terraform structure, deployment order, cost and teardown
 
-Status: **written and validated offline only. Nothing has been deployed.**
+Status: **deployed in AWS (eu-west-2) and verified on 28 October 2026.** Final state:
+`traffic_stage = 3` (EC2 0 % / ECS 100 %), with the legacy EC2 kept as the rollback target.
+Results: [evidence/live-migration-2026-10-28](../evidence/live-migration-2026-10-28/README.md).
+The design sections below were written before deployment; where the live result differs, it
+is noted inline. The ALB is **HTTP only**, with no Route 53 record or ACM certificate.
 Data handling and cutover rules are in [migration-state-runbook.md](migration-state-runbook.md).
 
 ## 1. Terraform structure and state ownership
@@ -155,8 +159,8 @@ and, before EC2 uses DynamoDB, write orders into the shared table.
 Today clients use the Elastic IP (`application_url`). At stage 0 the ALB sends 100% to the
 same EC2, so moving clients to the ALB changes nothing for them:
 1. Publish `alb_url`. With a Route 53 record, lower its TTL to 60 s a day ahead, then
-   change the record to an alias of the ALB. This is a future Terraform change; no domain
-   is confirmed yet.
+   change the record to an alias of the ALB. This is a future Terraform change. **Not done
+   in this deployment:** there is no domain, and clients use the ALB's HTTP hostname.
 2. Keep the Elastic IP path working (`allowed_cidr_blocks`) until old clients have moved.
 3. Only then start weighted stages, and finally set `allowed_cidr_blocks = []`.
 
@@ -219,7 +223,7 @@ to 80/443. The direct EC2 path is closed by default and cannot be opened to 0.0.
 Each exception, with class, reason, mitigation and revisit condition, is in
 [security-exceptions.md](security-exceptions.md).
 
-## 10. Decisions needed before real provisioning
+## 10. Decisions needed before real provisioning (answered before the 27 Oct 2026 deployment)
 
 1. AWS region (examples use `eu-west-2`) and the two AZs to pin.
 2. GitHub owner and repository name; create the `production` Environment with required
@@ -233,13 +237,14 @@ Each exception, with class, reason, mitigation and revisit condition, is in
 
 ## 11. Known technical risks
 
-- **No real `terraform plan` yet.** Needs AWS credentials. Checks done so far: validate,
-  mocked unit tests, Checkov.
+- ~~No real `terraform plan` yet.~~ **Resolved:** every deploy used a real saved plan,
+  reviewed and then approved (Oct 27–28, 2026).
 - **IAM `dynamodb:LeadingKeys` with `TransactWriteItems`:** documented as supported but
   untested against real IAM. If writes are denied, the first order will fail with a 500.
-  Check right after step 5.
+  Check right after step 5. **Verified 28 Oct 2026:** orders written through both ECS and EC2
+  succeeded.
 - **Fargate and read-only root:** Gunicorn's `--worker-tmp-dir /dev/shm` relies on Fargate
-  providing a writable `/dev/shm`. Untested on Fargate.
+  providing a writable `/dev/shm`. **Verified on Fargate:** tasks healthy at 100 % traffic.
 - **Weighted routing has no automatic failover:** if ECS targets are unhealthy, their share
   still goes to them. Mitigated by the unhealthy-target alarm and the rollback to stage 0.
 - **Single NAT** (section 2); **single-instance legacy EC2** (no high availability for the

@@ -1,9 +1,11 @@
 # CI/CD: GitHub Actions, OIDC and approval-gated deployment
 
-Status: `ci.yml` and `terraform-ci.yml` passed on GitHub for the pushed revision (Task 9).
-Changes from Tasks 11-13 (IAM policy gate, pre-commit step) are **not yet verified on
-GitHub**; they only count as CI-verified after they are pushed and the runs pass.
-`deploy.yml` has never run.
+Status (28 Oct 2026): `ci.yml` and `terraform-ci.yml` pass on every push. `deploy.yml` ran
+the whole migration in AWS: deploys, the staged cutover 90/10 → 50/50 → 0/100, a rollback to
+EC2 and a restoration to 100 % ECS. Each run was approved through the `production`
+environment. Results and run links:
+[evidence/live-migration-2026-10-28](../evidence/live-migration-2026-10-28/README.md). (The
+earlier status line, "`deploy.yml` has never run", dated from before 27 Oct 2026.)
 Platform design: [aws-platform.md](aws-platform.md). Data/cutover rules:
 [migration-state-runbook.md](migration-state-runbook.md). Accepted risks:
 [security-exceptions.md](security-exceptions.md).
@@ -227,7 +229,7 @@ Also set:
   `Terraform gate`.
 - "Read repository contents" as the default workflow permission.
 
-## 7. First deployment (no `-target`)
+## 7. First deployment (no `-target`; executed 27–28 Oct 2026)
 
 Every state-changing step below needs your explicit approval at the time.
 
@@ -254,8 +256,10 @@ Every state-changing step below needs your explicit approval at the time.
 
 ## 8. Rollback
 
-- **Traffic:** PR setting `traffic_stage = 0` → `platform` deploy. The plan changes only
-  the listener; this takes about a minute after approval.
+- **Traffic:** PR setting `traffic_stage = 0` → `platform` deploy. The plan changes the
+  listener; because each commit builds a new image, ECS also rolls to it. **Tested 28 Oct 2026**
+  from 100 % ECS (run 40736488690): the apply took about 3 minutes, and all sampled requests
+  were then served by EC2.
 - **Bad image:** the ECS circuit breaker rolls back a failing deployment automatically.
   Otherwise, run deploy from the last good commit (`application` kind).
 - **Emergency (pipeline unavailable):** an administrator changes the listener weights in
@@ -277,6 +281,9 @@ Every state-changing step below needs your explicit approval at the time.
 | Approval rejected | apply never runs; no AWS credentials issued |
 
 ## 10. Evidence to capture before teardown
+
+Captured on 28 Oct 2026. The public summary is in [evidence/live-migration-2026-10-28](../evidence/live-migration-2026-10-28/README.md),
+and the full checksummed archive is kept privately. The recording plan is in [demo-walkthrough.md](demo-walkthrough.md).
 
 - Green `CI gate` and `Terraform gate` on a PR, plus one red run per negative test.
 - A deploy run graph showing the approval pause, the plan summary (sanitised) and the

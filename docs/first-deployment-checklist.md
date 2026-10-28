@@ -1,7 +1,9 @@
 # First deployment checklist (operator runbook)
 
-Nothing in this file has been executed in AWS yet (26 Oct 2026). Every state-changing
-step needs your explicit decision at the time. Commands are PowerShell from the
+**Executed in AWS on 27–28 October 2026**: bootstrap, deploys, seed, EC2 conversion, staged
+cutover, rollback and restoration. Results: [evidence/live-migration-2026-10-28](../evidence/live-migration-2026-10-28/README.md).
+The phases below remain the reference runbook (the original text said "not yet executed",
+26 Oct 2026). Every state-changing step still needs your explicit decision at the time. Commands are PowerShell from the
 repository root unless stated. Design: [aws-platform.md](aws-platform.md); data rules:
 [migration-state-runbook.md](migration-state-runbook.md); pipeline: [ci-cd.md](ci-cd.md).
 
@@ -62,7 +64,7 @@ Short-lived credentials in the current process only, then two plans started toge
 Plans never create state; the loser never writes anything.
 
 ```powershell
-Set-Location C:\Users\Feras_F\Desktop\EC2\ec2-legacy-app-main
+Set-Location <path-to-your-clone>   # repository root
 aws configure export-credentials --profile default --format powershell | Out-String | Invoke-Expression
 aws sts get-caller-identity --query Account --output text      # must end 7756
 $env:TF_VAR_availability_zones = '["eu-west-2a","eu-west-2b"]'
@@ -112,7 +114,7 @@ state is **not empty**: the next plan refreshes the 60 real resources and propos
 Read-only checks before the next deployment (operator, credentials in-process only):
 
 ```powershell
-Set-Location C:\Users\Feras_F\Desktop\EC2\ec2-legacy-app-main
+Set-Location <path-to-your-clone>   # repository root
 aws configure export-credentials --profile default --format powershell | Out-String | Invoke-Expression
 (aws sts get-caller-identity --query Account --output text).EndsWith('7756')            # True
 $s = @(terraform -chdir=terraform state list | Where-Object { $_ -notlike 'data.*' }); $s.Count   # 60

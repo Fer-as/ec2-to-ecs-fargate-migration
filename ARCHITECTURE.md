@@ -1,6 +1,13 @@
 # Architecture Documentation
 
-## Current Architecture (Legacy EC2)
+> **Historical document (original CoderCo starter).** "Original architecture" below is the
+> legacy single-EC2 setup *before* the migration. "Original target architecture" is the
+> assignment brief's sketch: it shows HTTPS and Route 53, which this project did **not**
+> deploy. The platform as deployed and verified in AWS on 28 October 2026 (HTTP ALB,
+> EC2 kept as the rollback target, ECS Fargate at 100 %, shared DynamoDB) is in
+> [README.md](README.md#architecture) and [docs/architecture/](docs/architecture/README.md).
+
+## Original Architecture (Legacy EC2, before migration)
 
 ### High-Level Overview
 
@@ -182,9 +189,9 @@
 - ❌ No persistence
 - ❌ No backup/recovery
 
-## Target Architecture (ECS Fargate)
+## Original Target Architecture (assignment brief, not as deployed)
 
-After migration, the architecture will be:
+The assignment's target sketch (HTTPS and Route 53 were not deployed; see the note at the top):
 
 ```
 ┌─────────────┐
@@ -263,4 +270,4 @@ Students should plan:
 4. **Observability**: CloudWatch logs, metrics, alarms
 5. **Cutover Plan**: Zero-downtime migration strategy
 
-See main README.md for detailed migration requirements.
+The original migration requirements are in [docs/legacy-starter-readme.md](docs/legacy-starter-readme.md).

@@ -7,36 +7,14 @@
 >   bypass) and verified at runtime
 >   ([approval-gate-test.md](approval-gate-test.md)).
 > - **AWS:** the platform was deployed, migrated and then decommissioned on 28 Oct 2026.
-> - **Section 1 (CoderCo redistribution permission):** **still open**. The repository
->   contains no record that written permission was obtained. The original starter is
->   credited in the [README](../README.md#credits-starter-code-vs-migration-work) and
->   [docs/legacy-starter-readme.md](legacy-starter-readme.md), and no licence is applied
->   to CoderCo's files. The repository owner should confirm publication rights with
->   CoderCo.
 >
-> The rest of this page is the original assessment, unchanged.
+> The rest of this page is the original assessment (written while the repository was
+> still private), kept for its exposure audit and approval-gate design.
 
-Status on 2026-10-26: the repository is **private**. Nothing below has been configured.
-Decision recorded: public repository + protected GitHub Environment `production`,
-**conditional on CoderCo permission** (section 1).
+Decision recorded on 2026-10-26: public repository + protected GitHub Environment
+`production`.
 
-## 1. CoderCo redistribution permission: BLOCKED
-
-| Source | What it says |
-|---|---|
-| [codercohq/ec2-legacy-app](https://github.com/codercohq/ec2-legacy-app) (public, 2 commits) | No LICENSE/COPYING file; GitHub detects no licence (`license: null`, community profile `license=false`) |
-| [README "License" section](https://github.com/codercohq/ec2-legacy-app/blob/main/README.md#license) | "This is a learning project for CoderCo Community." No grant of rights |
-| CoderCo org: other repos | Some are MIT (e.g. `terraform-starter-kit`, `eks-assignment-v1`); that licence does not apply to this repository |
-| [codercohq/ecs-assignment](https://github.com/codercohq/ecs-assignment), [codercohq/challenges](https://github.com/codercohq/challenges) | Other assignments say "Create your own repository" / "Submit a GitHub repo"; no licence, no statement about this repository or public redistribution |
-| [GitHub: licensing a repository](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/licensing-a-repository) | Without a licence "the default copyright laws apply ... no one may reproduce, distribute, or create derivative works" |
-| [GitHub Terms, D.5](https://docs.github.com/en/site-policy/github-terms/github-terms-of-service) | Public repos let others view and **fork** through GitHub. This repository is a standalone copy (`fork: false`), not a GitHub fork |
-
-Conclusion: public redistribution of the starter code is **not established**. Get written
-permission from CoderCo (e.g. the course owner) that students may publish solutions
-containing the starter code publicly, and keep that message. Then add the attribution in
-section 5. Do not add a licence covering CoderCo's files.
-
-## 2. Exposure audit (all history: 3 commits, 136 paths, `main` only)
+## 1. Exposure audit (all history: 3 commits, 136 paths, `main` only)
 
 | Class | Finding | Action |
 |---|---|---|
@@ -52,7 +30,7 @@ Future exposure once public: Actions logs are public. `deploy.yml` apply output 
 role ARNs would show the full account ID (`configure-aws-credentials` does not mask it by
 default). Optional: set `mask-aws-account-id: true` on the three credential steps.
 
-## 3. Protected `production` environment (configure only after section 1 is cleared)
+## 2. Protected `production` environment
 
 Facts ([deployments and environments](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments),
 [manage environments](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments),
@@ -102,7 +80,7 @@ Expected: a `required_reviewers` rule listing the reviewer(s) and the intended
 one policy `main` of type `branch`; `can_admins_bypass: false` (if the field is not
 returned, confirm the checkbox in the UI).
 
-## 4. Approval-gate test (no AWS access; run before the bootstrap apply)
+## 3. Approval-gate test (no AWS access; run before the bootstrap apply)
 
 > **Superseded (Task 16):** the implemented test is
 > [.github/workflows/approval-gate-test.yml](../.github/workflows/approval-gate-test.yml)
@@ -163,11 +141,3 @@ The environment counts as **verified** only after tests 1-4 pass.
 `ci/tests/test_workflow_policy.py` checks OIDC use only in `ci.yml`, `terraform-ci.yml`
 and `deploy.yml`; extend it to fail on any other workflow requesting `id-token`
 (allow-listing the test file while it exists).
-
-## 5. Attribution to add before publishing
-
-The README already credits CoderCo and lists the migration work. Add: the upstream link
-`https://github.com/codercohq/ec2-legacy-app`, the date or commit it was copied from, a
-statement that the starter code remains CoderCo's and is published with their permission
-(quote or reference it), and that no licence is granted for it. Make clear the repository
-is a portfolio migration built from that starter.

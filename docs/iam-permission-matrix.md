@@ -125,6 +125,14 @@ DisassociateAddress on every Elastic IP in the account.
 
 ## 6. Approval model (unchanged, fail-closed)
 
+> **Later:** option 1 below was chosen.
+>
+> - The repository was made public, and the `production` environment was configured with
+>   a required reviewer, `main` only and no admin bypass.
+> - The gate was verified at runtime ([approval-gate-test.md](approval-gate-test.md)) and
+>   then used for every deploy on 27–28 Oct 2026.
+> - The text below is the original analysis from 25 Oct.
+
 The repository is **private on GitHub Free**. Environment protection rules (required
 reviewers) are not available there. The current workflow is **not** protected by
 required reviewers. Three separate things:

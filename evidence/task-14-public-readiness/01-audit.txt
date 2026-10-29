@@ -2,15 +2,7 @@ Task 14 - Public repository readiness audit (2026-10-26). Read-only.
 No visibility, environment, ruleset or branch-protection change. No AWS calls.
 GitHub API used read-only (gh api GET).
 
-1. CoderCo permission: BLOCKED
-   codercohq/ec2-legacy-app: public, fork=false, license=null, no LICENSE/COPYING/NOTICE in tree
-   README "License": "This is a learning project for CoderCo Community." (no grant)
-   Other CoderCo repos: MIT only on devops-learning, dotfiles, eks-assignment-v1,
-   terraform-starter-kit (not applicable). ecs-assignment / challenges READMEs: "Create your
-   own repository" / "Submit a GitHub repo" - no licence, not about this repository.
-   Fer-as/ec2-to-ecs-fargate-migration: private, fork=false, license=null.
-
-2. History audit (git rev-list --all: 3 commits; 136 paths; refs: main, origin/main; no stash)
+1. History audit (git rev-list --all: 3 commits; 136 paths; refs: main, origin/main; no stash)
    Commit metadata: author = committer = Fer-as <78626961+Fer-as@users.noreply.github.com>;
    no Co-authored-by / Signed-off-by trailers.
    gitleaks v8.30.1 git --log-opts=--all (repo config):   no leaks found
@@ -34,10 +26,10 @@ GitHub API used read-only (gh api GET).
    Accidental file: added in 9bcd827; content = 15 lines of `git diff --check` output;
    the file NAME contains the local Windows user name/path fragment and ends in U+F022.
 
-3. GitHub settings (read-only): environments = 0; rulesets and branch protection = not
+2. GitHub settings (read-only): environments = 0; rulesets and branch protection = not
    available on a private Free repo (HTTP 403); Actions default workflow permissions = read;
    OIDC: use_immutable_subject = true, sub_claim_prefix matches terraform/bootstrap
    (owner id and repository id identical).
 
-4. Proposed approval-gate test workflow (docs/public-release-and-approval.md section 4):
+3. Proposed approval-gate test workflow (docs/public-release-and-approval.md section 3):
    actionlint 1.7.12 - no findings (checked outside the repository; not added to .github/).

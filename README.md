@@ -89,7 +89,8 @@ See [Migration results](#migration-results).
 ### Credits: starter code vs migration work
 
 The starting point, kept as received, is the **CoderCo** EC2-to-ECS migration assignment
-(CoderCo Community learning project):
+(CoderCo Community learning project), from the upstream starter
+[codercohq/ec2-legacy-app](https://github.com/codercohq/ec2-legacy-app):
 
 - the Flask application and its API;
 - the Nginx and systemd configuration and the setup scripts;

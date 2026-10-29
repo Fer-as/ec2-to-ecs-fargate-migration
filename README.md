@@ -30,7 +30,8 @@ Fargate**, and the migration was **run live in AWS (`eu-west-2`) on 28 October 2
 >
 > - The migration was completed on 28 October 2026. The rollback and the final
 >   restoration were tested successfully.
-> - A walkthrough video was recorded. The public link will be added here later.
+> - [Watch the recorded migration walkthrough on YouTube](https://youtu.be/InSQNVuTTlw)
+>   (captured before teardown).
 > - All AWS resources were deliberately decommissioned on 28 October 2026 to control
 >   costs, through reviewed, saved Terraform plans
 >   ([teardown record](evidence/aws-teardown-2026-10-28/README.md)).
@@ -483,9 +484,12 @@ The full record, including where it departed from the original runbook, is in
 
 ## Demo video
 
-A walkthrough was recorded on 28 October 2026, before teardown. The public link will be
-added here once it is published. The recording guide is
-[docs/demo-walkthrough.md](docs/demo-walkthrough.md); its AWS links are historical.
+**[Watch the EC2 → ECS Fargate migration walkthrough on YouTube](https://youtu.be/InSQNVuTTlw).**
+
+The walkthrough was recorded on 28 October 2026, before the AWS environment was
+intentionally decommissioned. The recording guide is
+[docs/demo-walkthrough.md](docs/demo-walkthrough.md); its AWS links are historical and
+no longer active.
 
 ## License
 

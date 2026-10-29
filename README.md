@@ -1,9 +1,30 @@
 # EC2 to ECS Fargate Migration — Terraform, GitHub Actions and DynamoDB
 
-A legacy Flask API on a single EC2 instance moved to **Amazon ECS Fargate** with a
-progressive, approval-gated ALB traffic cutover and shared DynamoDB storage. A deliberate
-rollback and a restoration were also tested. The whole migration was run live in AWS
-(`eu-west-2`) on **28 October 2026**.
+A legacy Flask API ran on **one EC2 instance with in-memory data**. It had no scaling,
+no CI/CD and lost its data on every restart. This project moved it to **Amazon ECS
+Fargate**, and the migration was **run live in AWS (`eu-west-2`) on 28 October 2026**:
+
+1. **Shared state first:** both backends were moved onto one DynamoDB table, so traffic
+   could be split safely.
+2. **Progressive cutover:** an ALB moved traffic **90/10 → 50/50 → 0/100**. Each stage
+   was one Terraform change, deployed through GitHub Actions with OIDC and a manually
+   approved saved plan, then held under CloudWatch monitoring.
+3. **Rollback tested:** traffic went back to EC2 on purpose, then was restored to ECS,
+   through the same reviewed pipeline.
+4. **Teardown:** afterwards, the project's AWS resources were removed with reviewed
+   destroy plans. Only a small private Terraform state bucket was kept.
+
+| What | Result | Proof |
+|---|---|---|
+| Final migrated state (before teardown) | EC2 0 % / ECS 100 %, 2 Fargate tasks in 2 AZs, EC2 healthy as the rollback target | [Final restoration](https://github.com/Fer-as/ec2-to-ecs-fargate-migration/actions/runs/40739889980) |
+| Progressive cutover | 600/600, 390/390 and 350/350 sampled HTTP 200 | [Stage runs](#migration-results) |
+| Rollback and restoration | 300/300 via EC2, then 350/350 via ECS | [40736488690](https://github.com/Fer-as/ec2-to-ecs-fargate-migration/actions/runs/40736488690), [40739889980](https://github.com/Fer-as/ec2-to-ecs-fargate-migration/actions/runs/40739889980) |
+| Shared data | An order through each backend was visible through the other; stock 98, revenue 59.98 | [DynamoDB test](evidence/live-migration-2026-10-28/README.md#shared-dynamodb-test) |
+| Monitoring | Six alarms `OK`, 0 × 5xx, no unhealthy targets at every observation | [Monitoring results](evidence/live-migration-2026-10-28/README.md#monitoring-results) |
+| Teardown | 70 platform and 16 bootstrap resources destroyed by reviewed plans | [Teardown record](evidence/aws-teardown-2026-10-28/README.md) |
+
+**All proof, grouped by capability:** [evidence index](evidence/README.md) ·
+**Why it was built this way:** [engineering decisions](docs/engineering-decisions.md)
 
 > **Deployment status: decommissioned.**
 >
@@ -18,14 +39,21 @@ rollback and a restoration were also tested. The whole migration was run live in
 >   sanitised evidence remain available.
 > - The [Deploy workflow](.github/workflows/deploy.yml) is kept as source but disabled.
 
-| Final migrated state (before teardown) | Cutover | Rollback | Verified data |
-|---|---|---|---|
-| EC2 0 % / ECS 100 %, 2 Fargate tasks in 2 AZs | 90/10 → 50/50 → 0/100, all PASS | 100 % ECS → 100 % EC2 → 100 % ECS, PASS | Orders written through each backend, read through the other |
+## Contents
 
-**Evidence:** [live migration results](evidence/live-migration-2026-10-28/README.md) ·
-[teardown record](evidence/aws-teardown-2026-10-28/README.md) ·
-**Architecture:** [diagrams](docs/architecture/README.md) ·
-**Recording guide (historical):** [demo walkthrough](docs/demo-walkthrough.md)
+1. [Project overview](#project-overview)
+2. [Before and after](#before-and-after)
+3. [Architecture](#architecture)
+4. [Migration strategy](#migration-strategy)
+5. [CI/CD and security](#cicd-and-security)
+6. [Migration results](#migration-results)
+7. [Shared DynamoDB](#shared-dynamodb)
+8. [Rollback](#rollback)
+9. [Testing, monitoring and evidence](#testing-monitoring-and-evidence)
+10. [Engineering decisions](#engineering-decisions)
+11. [Known limitations](#known-limitations)
+12. [Teardown](#teardown-completed-28-october-2026)
+13. [Demo video](#demo-video)
 
 ## Project overview
 
@@ -116,9 +144,45 @@ All of the following was added for the migration:
   - a migration dashboard;
   - VPC flow logs.
 
+## Before and after
+
+**Before:** the CoderCo starter, a single EC2 instance. The full description is in
+[ARCHITECTURE.md](ARCHITECTURE.md#original-architecture-legacy-ec2-before-migration).
+
+```mermaid
+flowchart LR
+  user([Internet]) -->|HTTP :80| eip[Elastic IP]
+  subgraph vpc["VPC, one public subnet, one AZ"]
+    subgraph ec2["EC2 t3.micro"]
+      nginx[Nginx :80] --> gunicorn["Gunicorn + Flask :5000"]
+      gunicorn --> mem[("In-memory data<br/>lost on restart")]
+    end
+  end
+  eip --> nginx
+```
+
+**After:** the platform deployed on 28 October 2026 and decommissioned after
+verification. The diagram is in [Architecture](#architecture) below.
+
+| | Before (starter) | After (deployed 28 Oct 2026, now retired) |
+|---|---|---|
+| Entry point | Elastic IP on one instance | Public ALB across two AZs, weighted across two target groups |
+| Compute | One EC2 instance: Nginx → Gunicorn | ECS Fargate, 2 tasks in private subnets in 2 AZs (autoscaling 2–4); EC2 kept healthy as the rollback target |
+| Data | In process memory, lost on restart, inconsistent across workers | Shared DynamoDB table, transactional order writes, PITR |
+| Scaling and availability | None, single AZ | Multi-AZ tasks, CPU target tracking |
+| Infrastructure | Single-instance Terraform, local state | Separate bootstrap and platform roots, S3 remote state with lock files |
+| Delivery | Manual, on the instance | GitHub Actions: CI gates → image by digest → saved plan → `production` approval → exact apply → rollout check |
+| Credentials | — | GitHub OIDC roles, no static keys |
+| Visibility | Logs on the instance | CloudWatch logs, six alarms, a migration dashboard, VPC flow logs |
+| Traffic change and rollback | Not possible | One `traffic_stage` line, deployed through the same reviewed path |
+
 ## Architecture
 
-![Deployed platform architecture](docs/architecture/ec2-to-ecs-overview.png)
+![Deployed platform architecture (historical: live on 28 October 2026, since decommissioned)](docs/architecture/ec2-to-ecs-overview.png)
+
+*The platform as deployed and verified on 28 October 2026. It has since been
+decommissioned. The editable source is
+[ec2-to-ecs-overview.drawio](docs/architecture/ec2-to-ecs-overview.drawio).*
 
 What was deployed at the end of the live migration, as verified on 28 October 2026
 before teardown:
@@ -148,6 +212,39 @@ describe this deployed architecture. They aren't infrastructure that is running 
 There was no HTTPS, ACM certificate or Route 53 record: the demo used the ALB's HTTP
 hostname. Details: [docs/aws-platform.md](docs/aws-platform.md) and the
 [migration flow diagram](docs/architecture/migration-traffic-flow.png).
+
+## Migration strategy
+
+![Migration traffic flow: stages, gates and rollback](docs/architecture/migration-traffic-flow.png)
+
+*Editable source: [migration-traffic-flow.drawio](docs/architecture/migration-traffic-flow.drawio).*
+
+1. **Prepare:**
+   - build and scan the image;
+   - create ECS at weight 0;
+   - seed DynamoDB;
+   - switch EC2 to DynamoDB storage. Terraform preconditions refuse any weight above 0
+     before this.
+2. **Shift traffic in stages:**
+   - stage 0 is 100/0, stage 1 is 90/10, stage 2 is 50/50 and stage 3 is 0/100;
+   - each stage is one `traffic_stage` commit, deployed as a `platform` run;
+   - the operator reviews the saved plan (only the listener weights, plus the rebuilt
+     image), then approves `production`.
+3. **Hold and observe:** each stage is held for at least 15 minutes, with read-only checks
+   at every observation:
+   - the weights;
+   - target and task health;
+   - all six alarms, plus 5xx and unhealthy-host metrics;
+   - DynamoDB writes and a consistent scan;
+   - a comparison of both backends;
+   - 100–200 sampled requests.
+4. **Stop or roll back:** any failed check means stopping. A rollback is
+   `traffic_stage = 0` through the same pipeline. EC2 stays healthy and writes to the same
+   table, so no data has to move.
+
+The full operator runbook is in
+[docs/first-deployment-checklist.md](docs/first-deployment-checklist.md), and the data
+rules are in [docs/migration-state-runbook.md](docs/migration-state-runbook.md).
 
 ## Migration results
 
@@ -208,6 +305,7 @@ CI + security gates → publish image (ECR digest) → saved Terraform plan (pri
   - Terraform `fmt`, `validate` and mocked `terraform test`;
   - a rendered-IAM-policy gate;
   - workflow privilege tests;
+  - an offline check of relative Markdown links ([ci/check_markdown_links.py](ci/check_markdown_links.py));
   - pre-commit hooks.
 - **GitHub OIDC:**
   - PR and push workflows get no AWS access;
@@ -217,12 +315,26 @@ CI + security gates → publish image (ECR digest) → saved Terraform plan (pri
     changing its own identity.
 - **Approval:** the `production` environment requires a reviewer, accepts only `main`,
   and allows no admin bypass. A rejected approval means no apply credentials are issued.
+  The gate was tested before any AWS deploy: a rejected run never started its job, and
+  an approved run did.
+
+<img src="evidence/task-16-predeployment/01-production-approval-waiting.png" width="720" alt="GitHub Actions run waiting for production environment approval">
+
+*The approval-gate test run waiting for `production` review on 27 October 2026. The
+rejected and approved runs are shown in the [evidence index](evidence/README.md#screenshots-production-approval-gate-27-october-2026).*
 
 Details: [docs/ci-cd.md](docs/ci-cd.md),
 [docs/iam-permission-matrix.md](docs/iam-permission-matrix.md) and
 [docs/approval-gate-test.md](docs/approval-gate-test.md).
 
-## Testing and monitoring
+## Testing, monitoring and evidence
+
+Every claim in this README is linked to real output in the
+**[evidence index](evidence/README.md)**, grouped by capability: container, shared
+state, Terraform, CI gates, IAM, approval, cutover, rollback, monitoring and teardown.
+The workflows run on every push:
+[CI](https://github.com/Fer-as/ec2-to-ecs-fargate-migration/actions/workflows/ci.yml) and
+[Terraform CI](https://github.com/Fer-as/ec2-to-ecs-fargate-migration/actions/workflows/terraform-ci.yml).
 
 - **Automated tests,** counted at commit `560e1e5`:
   - 410 CI tooling and policy tests (`ci/tests`);
@@ -264,6 +376,31 @@ data divergence, because both backends share the table. 100 % ECS was then resto
 EC2 must never be rolled back to in-memory storage once shared writes exist. Runbook:
 [docs/first-deployment-checklist.md](docs/first-deployment-checklist.md#phase-9-rollback).
 
+## Engineering decisions
+
+[docs/engineering-decisions.md](docs/engineering-decisions.md) gives the reasoning,
+trade-offs and verified behaviour for each choice. In short:
+
+- **Fargate** removed host management.
+- **DynamoDB had to come before any traffic split,** so that requests could land on
+  either backend.
+- **EC2 stayed healthy at weight 0** as a rollback target that already had the same data.
+- **ALB weights** gave gradual, reversible shifts without DNS caching delays.
+- **Rollback went through Terraform,** so it was reviewed and couldn't drift from the
+  code.
+- **OIDC** meant no static keys.
+- **Saved, approved plans** meant the reviewer approved exactly what was applied.
+- **Separate bootstrap and platform roots** kept identity and state out of reach of a
+  normal deploy.
+- **Two AZs, one NAT gateway and HTTP only** were cost choices for a short
+  demonstration. What would change for production is listed in that document.
+
+A note on Terraform layout: the subnets and route-table associations are written as
+separate resources (`public`, `public_b`, `private`, `private_b`) instead of `for_each`.
+The first ones come from the CoderCo starter. Keeping their addresses avoided replacing the
+deployed network, and keeps the code identical to what produced the saved plans. ECS CPU,
+memory and task counts are variables, and tags come from the provider's `default_tags`.
+
 ## Known limitations
 
 This is a short-lived portfolio and learning deployment, not a hardened or compliance-reviewed
@@ -303,7 +440,8 @@ production system.
 | Operator runbook (deploy, cutover, rollback, teardown) | [docs/first-deployment-checklist.md](docs/first-deployment-checklist.md) |
 | Acceptance checklist | [docs/acceptance-checklist.md](docs/acceptance-checklist.md) |
 | Security exceptions and IAM matrix | [docs/security-exceptions.md](docs/security-exceptions.md), [docs/iam-permission-matrix.md](docs/iam-permission-matrix.md) |
-| Earlier task evidence (container, IAM, pre-commit, incidents) | [evidence/](evidence/) |
+| All evidence, by capability (container, IAM, pre-commit, incidents, approval) | [evidence/README.md](evidence/README.md) |
+| Engineering decisions and trade-offs | [docs/engineering-decisions.md](docs/engineering-decisions.md) |
 | AWS teardown record (28 Oct 2026) | [evidence/aws-teardown-2026-10-28/](evidence/aws-teardown-2026-10-28/README.md) |
 | Recording guide (historical) | [docs/demo-walkthrough.md](docs/demo-walkthrough.md) |
 
@@ -341,6 +479,12 @@ repository variables and secret have been removed.
 
 The full record, including where it departed from the original runbook, is in
 [evidence/aws-teardown-2026-10-28](evidence/aws-teardown-2026-10-28/README.md).
+
+## Demo video
+
+A walkthrough was recorded on 28 October 2026, before teardown. The public link will be
+added here once it is published. The recording guide is
+[docs/demo-walkthrough.md](docs/demo-walkthrough.md); its AWS links are historical.
 
 ## License
 

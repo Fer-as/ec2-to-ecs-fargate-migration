@@ -5,6 +5,19 @@ Manual trigger only, `contents: read`, **no OIDC token, no AWS, no Terraform, no
 no actions**. One job, `approval`, uses `environment: production`; its only real step
 prints a message. `ci/tests/test_workflow_privileges.py` fails if any of that changes.
 
+> **Later result (27 Oct 2026): runtime verified.**
+>
+> - **Rejected:** run [40504794430](https://github.com/Fer-as/ec2-to-ecs-fargate-migration/actions/runs/40504794430)
+>   was rejected and its job never ran.
+> - **Approved:** run [40505585141](https://github.com/Fer-as/ec2-to-ecs-fargate-migration/actions/runs/40505585141)
+>   was approved and its job ran.
+> - **Screenshots:** in [evidence/task-16-predeployment](../evidence/task-16-predeployment/),
+>   and shown in the [evidence index](../evidence/README.md#screenshots-production-approval-gate-27-october-2026).
+> - **Live use:** after that, every migration deploy paused for this approval on
+>   27–28 Oct 2026.
+>
+> The table below is the original status from 26 Oct and is kept unchanged.
+
 | State | Meaning | Status (2026-10-26) |
 |---|---|---|
 | **Configured** | `production` exists with required reviewer `Fer-as`, prevent self-review off, admin bypass off, deployment branches `main` only (read back with the GitHub API) | Done (by the owner) |

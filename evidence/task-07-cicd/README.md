@@ -1,5 +1,9 @@
 # Task 7 evidence: CI/CD, OIDC and security gates (local validation only)
 
+> **Later:** the workflows have run on GitHub Actions since 25 Oct 2026, and `deploy.yml`
+> ran the live migration on 27–28 Oct 2026. See the [evidence index](../README.md).
+> The text below is the original local-only record.
+
 Captured on 2026-10-24. **The workflows have not run on GitHub Actions yet** and no AWS
 account was used. "Job" files below executed the workflow's own `run:` scripts
 (extracted from the YAML) locally with the same pinned tool images.

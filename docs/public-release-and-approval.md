@@ -1,5 +1,21 @@
 # Public release and deployment approval (Task 14 assessment)
 
+> **Historical assessment (26 Oct 2026).** Since then:
+>
+> - **Repository:** it is now **public**.
+> - **`production` environment:** configured (required reviewer, `main` only, no admin
+>   bypass) and verified at runtime
+>   ([approval-gate-test.md](approval-gate-test.md)).
+> - **AWS:** the platform was deployed, migrated and then decommissioned on 28 Oct 2026.
+> - **Section 1 (CoderCo redistribution permission):** **still open**. The repository
+>   contains no record that written permission was obtained. The original starter is
+>   credited in the [README](../README.md#credits-starter-code-vs-migration-work) and
+>   [docs/legacy-starter-readme.md](legacy-starter-readme.md), and no licence is applied
+>   to CoderCo's files. The repository owner should confirm publication rights with
+>   CoderCo.
+>
+> The rest of this page is the original assessment, unchanged.
+
 Status on 2026-10-26: the repository is **private**. Nothing below has been configured.
 Decision recorded: public repository + protected GitHub Environment `production`,
 **conditional on CoderCo permission** (section 1).

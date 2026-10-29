@@ -1,7 +1,7 @@
 # Pipeline IAM permission matrix (Task 11)
 
-Policies: [terraform/bootstrap/policies/](../terraform/bootstrap/policies/), rendered by
-[github_oidc.tf](../terraform/bootstrap/github_oidc.tf) with ARNs built from names, so
+Policies: [terraform/bootstrap/policies/](../../terraform/bootstrap/policies/), rendered by
+[github_oidc.tf](../../terraform/bootstrap/github_oidc.tf) with ARNs built from names, so
 `terraform plan` shows them in full. Sources: the AWS Service Authorization Reference
 (machine-readable service reference JSON for ec2, ecs, elasticloadbalancing,
 application-autoscaling, logs, sns, cloudwatch, iam, read on 2026-10-25) and the ECS
